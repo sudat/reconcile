@@ -1,0 +1,431 @@
+[
+  {
+    "subAccountName": "心斎橋店本支店取引",
+    "subAccount": "0001",
+    "branchName": "心斎橋店",
+    "branchCode": "050000101"
+  },
+  {
+    "subAccountName": "心斎橋店回金",
+    "subAccount": "0002",
+    "branchName": "心斎橋店",
+    "branchCode": "050000101"
+  },
+  {
+    "subAccountName": "心斎橋店買掛金立替決済",
+    "subAccount": "0003",
+    "branchName": "心斎橋店",
+    "branchCode": "050000101"
+  },
+  {
+    "subAccountName": "心斎橋店給与立替決済",
+    "subAccount": "0004",
+    "branchName": "心斎橋店",
+    "branchCode": "050000101"
+  },
+  {
+    "subAccountName": "心斎橋店賞与立替決済",
+    "subAccount": "0005",
+    "branchName": "心斎橋店",
+    "branchCode": "050000101"
+  },
+
+  {
+    "subAccountName": "東京店本支店取引",
+    "subAccount": "0006",
+    "branchName": "東京店",
+    "branchCode": "050000201"
+  },
+  {
+    "subAccountName": "東京店回金",
+    "subAccount": "0007",
+    "branchName": "東京店",
+    "branchCode": "050000201"
+  },
+  {
+    "subAccountName": "東京店買掛金立替決済",
+    "subAccount": "0008",
+    "branchName": "東京店",
+    "branchCode": "050000201"
+  },
+  {
+    "subAccountName": "東京店給与立替決済",
+    "subAccount": "0009",
+    "branchName": "東京店",
+    "branchCode": "050000201"
+  },
+  {
+    "subAccountName": "東京店賞与立替決済",
+    "subAccount": "0010",
+    "branchName": "東京店",
+    "branchCode": "050000201"
+  },
+
+  {
+    "subAccountName": "京都店本支店取引",
+    "subAccount": "0011",
+    "branchName": "京都店",
+    "branchCode": "050000301"
+  },
+  {
+    "subAccountName": "京都店回金",
+    "subAccount": "0012",
+    "branchName": "京都店",
+    "branchCode": "050000301"
+  },
+  {
+    "subAccountName": "京都店買掛金立替決済",
+    "subAccount": "0013",
+    "branchName": "京都店",
+    "branchCode": "050000301"
+  },
+  {
+    "subAccountName": "京都店給与立替決済",
+    "subAccount": "0014",
+    "branchName": "京都店",
+    "branchCode": "050000301"
+  },
+  {
+    "subAccountName": "京都店賞与立替決済",
+    "subAccount": "0015",
+    "branchName": "京都店",
+    "branchCode": "050000301"
+  },
+
+  {
+    "subAccountName": "神戸店本支店取引",
+    "subAccount": "0016",
+    "branchName": "神戸店",
+    "branchCode": "050000401"
+  },
+  {
+    "subAccountName": "神戸店回金",
+    "subAccount": "0017",
+    "branchName": "神戸店",
+    "branchCode": "050000401"
+  },
+  {
+    "subAccountName": "神戸店買掛金立替決済",
+    "subAccount": "0018",
+    "branchName": "神戸店",
+    "branchCode": "050000401"
+  },
+  {
+    "subAccountName": "神戸店給与立替決済",
+    "subAccount": "0019",
+    "branchName": "神戸店",
+    "branchCode": "050000401"
+  },
+  {
+    "subAccountName": "神戸店賞与立替決済",
+    "subAccount": "0020",
+    "branchName": "神戸店",
+    "branchCode": "050000401"
+  },
+
+  {
+    "subAccountName": "梅田店本支店取引",
+    "subAccount": "0021",
+    "branchName": "梅田店",
+    "branchCode": "050000601"
+  },
+  {
+    "subAccountName": "梅田店回金",
+    "subAccount": "0022",
+    "branchName": "梅田店",
+    "branchCode": "050000601"
+  },
+  {
+    "subAccountName": "梅田店買掛金立替決済",
+    "subAccount": "0023",
+    "branchName": "梅田店",
+    "branchCode": "050000601"
+  },
+  {
+    "subAccountName": "梅田店給与立替決済",
+    "subAccount": "0024",
+    "branchName": "梅田店",
+    "branchCode": "050000601"
+  },
+  {
+    "subAccountName": "梅田店賞与立替決済",
+    "subAccount": "0025",
+    "branchName": "梅田店",
+    "branchCode": "050000601"
+  },
+
+  {
+    "subAccountName": "札幌店本支店取引",
+    "subAccount": "0026",
+    "branchName": "札幌店",
+    "branchCode": "050000701"
+  },
+  {
+    "subAccountName": "札幌店回金",
+    "subAccount": "0027",
+    "branchName": "札幌店",
+    "branchCode": "050000701"
+  },
+  {
+    "subAccountName": "札幌店買掛金立替決済",
+    "subAccount": "0028",
+    "branchName": "札幌店",
+    "branchCode": "050000701"
+  },
+  {
+    "subAccountName": "札幌店給与立替決済",
+    "subAccount": "0029",
+    "branchName": "札幌店",
+    "branchCode": "050000701"
+  },
+  {
+    "subAccountName": "札幌店賞与立替決済",
+    "subAccount": "0030",
+    "branchName": "札幌店",
+    "branchCode": "050000701"
+  },
+
+  {
+    "subAccountName": "名古屋店本支店取引",
+    "subAccount": "0031",
+    "branchName": "名古屋店",
+    "branchCode": "050001001"
+  },
+  {
+    "subAccountName": "名古屋店回金",
+    "subAccount": "0032",
+    "branchName": "名古屋店",
+    "branchCode": "050001001"
+  },
+  {
+    "subAccountName": "名古屋店買掛金立替決済",
+    "subAccount": "0033",
+    "branchName": "名古屋店",
+    "branchCode": "050001001"
+  },
+  {
+    "subAccountName": "名古屋店給与立替決済",
+    "subAccount": "0034",
+    "branchName": "名古屋店",
+    "branchCode": "050001001"
+  },
+  {
+    "subAccountName": "名古屋店賞与立替決済",
+    "subAccount": "0035",
+    "branchName": "名古屋店",
+    "branchCode": "050001001"
+  },
+
+  {
+    "subAccountName": "上野店本支店取引",
+    "subAccount": "0036",
+    "branchName": "上野店",
+    "branchCode": "050001101"
+  },
+  {
+    "subAccountName": "上野店回金",
+    "subAccount": "0037",
+    "branchName": "上野店",
+    "branchCode": "050001101"
+  },
+  {
+    "subAccountName": "上野店買掛金立替決済",
+    "subAccount": "0038",
+    "branchName": "上野店",
+    "branchCode": "050001101"
+  },
+  {
+    "subAccountName": "上野店給与立替決済",
+    "subAccount": "0039",
+    "branchName": "上野店",
+    "branchCode": "050001101"
+  },
+  {
+    "subAccountName": "上野店賞与立替決済",
+    "subAccount": "0040",
+    "branchName": "上野店",
+    "branchCode": "050001101"
+  },
+
+  {
+    "subAccountName": "静岡店本支店取引",
+    "subAccount": "0041",
+    "branchName": "静岡店",
+    "branchCode": "050001201"
+  },
+  {
+    "subAccountName": "静岡店回金",
+    "subAccount": "0042",
+    "branchName": "静岡店",
+    "branchCode": "050001201"
+  },
+  {
+    "subAccountName": "静岡店買掛金立替決済",
+    "subAccount": "0043",
+    "branchName": "静岡店",
+    "branchCode": "050001201"
+  },
+  {
+    "subAccountName": "静岡店給与立替決済",
+    "subAccount": "0044",
+    "branchName": "静岡店",
+    "branchCode": "050001201"
+  },
+  {
+    "subAccountName": "静岡店賞与立替決済",
+    "subAccount": "0045",
+    "branchName": "静岡店",
+    "branchCode": "050001201"
+  },
+
+  {
+    "subAccountName": "高槻店本支店取引",
+    "subAccount": "0046",
+    "branchName": "高槻店",
+    "branchCode": "050001401"
+  },
+  {
+    "subAccountName": "高槻店回金",
+    "subAccount": "0047",
+    "branchName": "高槻店",
+    "branchCode": "050001401"
+  },
+  {
+    "subAccountName": "高槻店買掛金立替決済",
+    "subAccount": "0048",
+    "branchName": "高槻店",
+    "branchCode": "050001401"
+  },
+  {
+    "subAccountName": "高槻店給与立替決済",
+    "subAccount": "0049",
+    "branchName": "高槻店",
+    "branchCode": "050001401"
+  },
+  {
+    "subAccountName": "高槻店賞与立替決済",
+    "subAccount": "0050",
+    "branchName": "高槻店",
+    "branchCode": "050001401"
+  },
+
+  {
+    "subAccountName": "法人外商本支店取引",
+    "subAccount": "0051",
+    "branchName": "法人外商",
+    "branchCode": "050001601"
+  },
+  {
+    "subAccountName": "法人外商回金",
+    "subAccount": "0052",
+    "branchName": "法人外商",
+    "branchCode": "050001601"
+  },
+  {
+    "subAccountName": "法人外商買掛金立替決済",
+    "subAccount": "0053",
+    "branchName": "法人外商",
+    "branchCode": "050001601"
+  },
+  {
+    "subAccountName": "法人外商給与立替決済",
+    "subAccount": "0054",
+    "branchName": "法人外商",
+    "branchCode": "050001601"
+  },
+  {
+    "subAccountName": "法人外商賞与立替決済",
+    "subAccount": "0055",
+    "branchName": "法人外商",
+    "branchCode": "050001601"
+  },
+
+  {
+    "subAccountName": "不動産本支店取引",
+    "subAccount": "0056",
+    "branchName": null,
+    "branchCode": null
+  },
+
+  {
+    "subAccountName": "本社本支店取引",
+    "subAccount": "0057",
+    "branchName": "本社",
+    "branchCode": "050004001"
+  },
+  {
+    "subAccountName": "本社回金",
+    "subAccount": "0058",
+    "branchName": "本社",
+    "branchCode": "050004001"
+  },
+  {
+    "subAccountName": "本社買掛金立替決済",
+    "subAccount": "0059",
+    "branchName": "本社",
+    "branchCode": "050004001"
+  },
+  {
+    "subAccountName": "本社給与立替決済",
+    "subAccount": "0060",
+    "branchName": "本社",
+    "branchCode": "050004001"
+  },
+  {
+    "subAccountName": "本社賞与立替決済",
+    "subAccount": "0061",
+    "branchName": "本社",
+    "branchCode": "050004001"
+  },
+
+  {
+    "subAccountName": "セグメント間消去本支店取引",
+    "subAccount": "0062",
+    "branchName": null,
+    "branchCode": null
+  },
+
+  {
+    "subAccountName": "下関店本支店取引",
+    "subAccount": "0063",
+    "branchName": "下関店",
+    "branchCode": "050005301"
+  },
+  {
+    "subAccountName": "下関店回金",
+    "subAccount": "0064",
+    "branchName": "下関店",
+    "branchCode": "050005301"
+  },
+  {
+    "subAccountName": "下関店買掛金立替決済",
+    "subAccount": "0065",
+    "branchName": "下関店",
+    "branchCode": "050005301"
+  },
+  {
+    "subAccountName": "下関店給与立替決済",
+    "subAccount": "0066",
+    "branchName": "下関店",
+    "branchCode": "050005301"
+  },
+  {
+    "subAccountName": "下関店賞与立替決済",
+    "subAccount": "0067",
+    "branchName": "下関店",
+    "branchCode": "050005301"
+  },
+
+  {
+    "subAccountName": "須磨本支店取引",
+    "subAccount": "0068",
+    "branchName": "須磨店",
+    "branchCode": "050000402"
+  },
+  {
+    "subAccountName": "芦屋本支店取引",
+    "subAccount": "0069",
+    "branchName": "芦屋店",
+    "branchCode": "050000403"
+  }
+]
