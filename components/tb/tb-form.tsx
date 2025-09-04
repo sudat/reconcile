@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/table";
 import { useActionState, useState } from "react";
 import { Loader2 } from "lucide-react";
+import { maskBranchName } from "@/lib/mask";
 
 type Row = { leftBranch: string; rightBranch: string; leftAmount: number; rightAmount: number; diff: number; leftBranchName: string; rightBranchName: string; period: string };
 type TBState = { ok: boolean; error?: string | null; results?: Row[] | null };
@@ -128,10 +129,10 @@ export default function TbForm({ onSubmit }: Props) {
                       }
                     >
                       <TableCell>
-                        {r.leftBranchName} ({r.leftBranch})
+                        {maskBranchName(r.leftBranchName)} ({r.leftBranch})
                       </TableCell>
                       <TableCell>
-                        {r.rightBranchName} ({r.rightBranch})
+                        {maskBranchName(r.rightBranchName)} ({r.rightBranch})
                       </TableCell>
                       <TableCell className="text-right tabular-nums">
                         {r.leftAmount.toLocaleString()}

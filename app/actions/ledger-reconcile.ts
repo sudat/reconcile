@@ -6,6 +6,7 @@ import { SUBACCOUNT_BRANCH_MAP } from "@/constants/masterdata/subaccount-branch-
 import { canonicalBranchCode } from "@/constants/masterdata/aliases";
 import { resolveBranchCodeBySubaccount } from "@/constants/masterdata/subaccount-branch-map";
 import { resolveCounterpartyCodeFromSubName } from "@/lib/counterparty";
+import { maskBranchName } from "@/lib/mask";
 
 const INTERBRANCH_ACCOUNT_CODE = "11652090";
 
@@ -232,8 +233,9 @@ export async function ledgerReconcileAction(form: FormData) {
     const nameA = BRANCHES.find((b) => b.code === branchA)?.name ?? branchA;
     const nameB = BRANCHES.find((b) => b.code === branchB)?.name ?? branchB;
     info.addRow(["period", period]);
-    info.addRow(["branchA", nameA, branchA]);
-    info.addRow(["branchB", nameB, branchB]);
+    // 表示のみマスク適用（出力ファイルの見た目だけ変更、ロジック非影響）
+    info.addRow(["branchA", maskBranchName(nameA), branchA]);
+    info.addRow(["branchB", maskBranchName(nameB), branchB]);
 
     const ab = (await wb.xlsx.writeBuffer()) as ArrayBuffer;
     const base64 = Buffer.from(ab).toString("base64");

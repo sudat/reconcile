@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { BRANCHES } from "@/constants/masterdata/master-data";
+import { maskBranchName } from "@/lib/mask";
 import { Loader2 } from "lucide-react";
 
 type DownloadFile = { name: string; mime: string; base64: string };
@@ -176,7 +177,7 @@ export default function LedgerForm({ onSubmit }: Props) {
                     </option>
                     {BRANCHES.map((b) => (
                       <option key={b.code} value={b.code}>
-                        {b.name} ({b.code})
+                        {maskBranchName(b.name)} ({b.code})
                       </option>
                     ))}
                   </select>
@@ -208,7 +209,7 @@ export default function LedgerForm({ onSubmit }: Props) {
                     </option>
                     {BRANCHES.map((b) => (
                       <option key={b.code} value={b.code}>
-                        {b.name} ({b.code})
+                        {maskBranchName(b.name)} ({b.code})
                       </option>
                     ))}
                   </select>
