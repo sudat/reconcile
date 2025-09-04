@@ -79,8 +79,8 @@ export async function POST(req: Request) {
     return new Response(JSON.stringify({ ok: true, summary: text }), {
       headers: { "content-type": "application/json" },
     });
-  } catch (e: any) {
-    return new Response(JSON.stringify({ ok: false, error: e?.message || String(e) }), { status: 500 });
+  } catch (e: unknown) {
+    return new Response(JSON.stringify({ ok: false, error: e instanceof Error ? e.message : String(e) }), { status: 500 });
   }
 }
 

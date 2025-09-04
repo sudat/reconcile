@@ -15,7 +15,7 @@ type Props = {
     form: FormData
   ) => Promise<
     | { ok: false; error?: string }
-    | { ok: true; files: DownloadFile[]; meta?: { hasUnmatch?: boolean; diffDays?: number; unmatchCountA?: number; unmatchCountB?: number } }
+    | { ok: true; files: DownloadFile[]; meta?: { hasUnmatch?: boolean; diffDays?: number; unmatchCountA?: number; unmatchCountB?: number }; analysis?: unknown }
   >;
 };
 
@@ -134,14 +134,14 @@ export default function LedgerForm({ onSubmit }: Props) {
           );
 
           // アンマッチがある場合はAI分析をバックグラウンド開始
-          if (res.meta?.hasUnmatch && (res as any).analysis) {
+          if (res.meta?.hasUnmatch && res.analysis) {
             try {
               setAiLoading(true);
               pushLog("[AI] アンマッチ結果を分析中…");
               const r = await fetch("/api/ai/ledger-unmatch", {
                 method: "POST",
                 headers: { "content-type": "application/json" },
-                body: JSON.stringify((res as any).analysis),
+                body: JSON.stringify(res.analysis),
               });
               const json = await r.json();
               if (!json.ok) {
