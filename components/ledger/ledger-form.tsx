@@ -137,8 +137,8 @@ export default function LedgerForm({ onSubmit }: Props) {
 
           // アンマッチがある場合はAI分析をバックグラウンド開始
           if (res.meta?.hasUnmatch && res.analysis) {
+            const reqId = ++aiReqRef.current;
             try {
-              const reqId = ++aiReqRef.current;
               setAiLoading(true);
               pushLog("[AI] アンマッチ結果を分析中…");
               const r = await fetch("/api/ai/ledger-unmatch", {
