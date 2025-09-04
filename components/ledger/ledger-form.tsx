@@ -24,6 +24,9 @@ export default function LedgerForm({ onSubmit }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [lastFile, setLastFile] = useState<string | null>(null);
   const [logs, setLogs] = useState<string[]>([]);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiSummary, setAiSummary] = useState<string | null>(null);
+  const [aiError, setAiError] = useState<string | null>(null);
   const downloadRef = useRef<HTMLAnchorElement | null>(null);
 
   const pushLog = (msg: string) => {
@@ -35,6 +38,9 @@ export default function LedgerForm({ onSubmit }: Props) {
     setError(null);
     setLastFile(null);
     setLogs([]);
+    setAiLoading(false);
+    setAiSummary(null);
+    setAiError(null);
 
     try {
       const { upload } = await import("@vercel/blob/client");
@@ -126,6 +132,33 @@ export default function LedgerForm({ onSubmit }: Props) {
           pushLog(
             `  └ アンマッチファイルをダウンロードしました (${res.meta?.unmatchCountA ?? 0}件(A) / ${res.meta?.unmatchCountB ?? 0}件(B))`
           );
+
+          // アンマッチがある場合はAI分析をバックグラウンド開始
+          if (res.meta?.hasUnmatch && (res as any).analysis) {
+            try {
+              setAiLoading(true);
+              pushLog("[AI] アンマッチ結果を分析中…");
+              const r = await fetch("/api/ai/ledger-unmatch", {
+                method: "POST",
+                headers: { "content-type": "application/json" },
+                body: JSON.stringify((res as any).analysis),
+              });
+              const json = await r.json();
+              if (!json.ok) {
+                setAiError(json.error || "AI分析に失敗しました");
+                pushLog("[AI] 解析エラー: " + (json.error || "不明なエラー"));
+              } else {
+                setAiSummary(json.summary as string);
+                pushLog("[AI] 分析が完了しました");
+              }
+            } catch (e) {
+              console.error(e);
+              setAiError("AI分析に失敗しました");
+              pushLog("[AI] 解析中にエラーが発生しました");
+            } finally {
+              setAiLoading(false);
+            }
+          }
         }
       } catch (e) {
         console.error(e);
@@ -263,6 +296,20 @@ export default function LedgerForm({ onSubmit }: Props) {
                 {logs.map((l, i) => (
                   <div key={i}>{l}</div>
                 ))}
+              </div>
+            )}
+            {(aiLoading || aiSummary || aiError) && (
+              <div className="mt-3 rounded-md border bg-muted/40 p-3 text-sm space-y-2">
+                <div className="text-xs font-medium text-muted-foreground">AI分析</div>
+                {aiLoading && (
+                  <div className="inline-flex items-center gap-2 text-sm">
+                    <Loader2 className="animate-spin" /> AI分析中…
+                  </div>
+                )}
+                {aiError && <div className="text-destructive text-sm">{aiError}</div>}
+                {aiSummary && (
+                  <pre className="whitespace-pre-wrap text-xs leading-5">{aiSummary}</pre>
+                )}
               </div>
             )}
             {lastFile && (

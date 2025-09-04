@@ -198,6 +198,7 @@ export async function ledgerReconcileAction(form: FormData) {
     ws.addRow(header);
 
     const diffDays: string[] = [];
+    const daySummary: { date8: string; sumA: number; sumB: number; diff: number }[] = [];
     for (const d of days) {
       const arrA = byDayA.get(d) ?? [];
       const arrB = byDayB.get(d) ?? [];
@@ -226,6 +227,7 @@ export async function ledgerReconcileAction(form: FormData) {
       ];
       ws.addRow(row);
       if (sumA + sumB !== 0) diffDays.push(d);
+      daySummary.push({ date8: d, sumA, sumB, diff: sumA + sumB });
     }
 
     // 目印として先頭行に支店名も追加（別シート）
@@ -328,6 +330,62 @@ export async function ledgerReconcileAction(form: FormData) {
     const base64U = Buffer.from(abU).toString("base64");
     const filenameU = `ledger-unmatch_${period}_${branchA}-${branchB}.xlsx`;
 
+    // --- AI 分析用の最小ペイロードを作成（クライアント→APIで使用） ---
+    const idxByName = (name: string) => LEDGER_HEADER.findIndex((h) => h.name === name);
+    const I = {
+      postingDate: idxByName("計上日"),
+      subCode: idxByName("補助科目コード"),
+      subName: idxByName("補助科目名"),
+      voucherNo: idxByName("仕訳番号"),
+      desc: idxByName("伝票摘要"),
+      debit: idxByName("借方入力金額"),
+      debitTax: idxByName("借方入力税額"),
+      credit: idxByName("貸方入力金額"),
+      creditTax: idxByName("貸方入力税額"),
+    } as const;
+    const toNumberSafe = (x: unknown) => (typeof x === "number" ? x : Number(String(x ?? "").replace(/,/g, "")) || 0);
+    const toText = (x: unknown) => String(x ?? "");
+
+    type AnalysisItem = {
+      side: "A" | "B";
+      day: string; // yyyymmdd
+      subAccountCode: string;
+      subAccountName: string;
+      amountSigned: number;
+      debit: number;
+      credit: number;
+      voucherNo: string;
+      description: string;
+      rowIndex: number;
+    };
+
+    const toAnalysisItem = (side: "A" | "B", r: LedgerRow): AnalysisItem => {
+      const c = r.cells;
+      const debit = toNumberSafe(c[I.debit]) + toNumberSafe(c[I.debitTax]);
+      const credit = toNumberSafe(c[I.credit]) + toNumberSafe(c[I.creditTax]);
+      return {
+        side,
+        day: r.day,
+        subAccountCode: toText(c[I.subCode]),
+        subAccountName: toText(c[I.subName]),
+        amountSigned: r.amountSigned,
+        debit,
+        credit,
+        voucherNo: toText(c[I.voucherNo]),
+        description: toText(c[I.desc]),
+        rowIndex: r.rowIndex,
+      };
+    };
+
+    const analysisPayload = {
+      period,
+      branchA,
+      branchB,
+      daySummary,
+      itemsA: unmatchedA.map((r) => toAnalysisItem("A", r)).slice(0, 1000),
+      itemsB: unmatchedB.map((r) => toAnalysisItem("B", r)).slice(0, 1000),
+    };
+
     return {
       ok: true as const,
       files: [
@@ -348,6 +406,7 @@ export async function ledgerReconcileAction(form: FormData) {
         unmatchCountA,
         unmatchCountB,
       },
+      analysis: analysisPayload,
     };
   } catch (e: unknown) {
     return { ok: false as const, error: e instanceof Error ? e.message : String(e) };

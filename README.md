@@ -35,3 +35,18 @@ The easiest way to deploy your Next.js app is to use the [Vercel Platform](https
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
 # reconcile
+
+## AI要約（アンマッチ分析）
+
+- 依存パッケージ: `openai`
+- インストール（推奨: Bun / 代替: npm）
+
+```bash
+bun add openai
+# or
+npm i openai
+```
+
+- 環境変数: `.env` に `OPENAI_API_KEY` を設定してください。
+
+- 実行: 元帳A/Bの照合でアンマッチがあると、ダウンロードの裏で `/api/ai/ledger-unmatch` が呼ばれ、UIにサマリが表示されます。

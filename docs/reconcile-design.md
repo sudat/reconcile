@@ -29,6 +29,13 @@
     - アンマッチ抽出: `diff != 0` の日付に限定し、AとBで同額（絶対値）が1:1対応する明細は相殺、残りを `unmatched` に出力。
       - 出力シート構成: 左にAの全列（`LEDGER_HEADER`）、右にBの全列。同一シート1ヘッダ、A行→B行の順。
       - サーバー応答 `meta` に `hasUnmatch, diffDays, unmatchCountA, unmatchCountB` を含め、UIログでステップ表示に利用。
+      - 追加: `analysis` としてAI要約用の最小ペイロード（期間/支店/日別サマリ/アンマッチ行抜粋）を返却（クライアントが別APIへ送る）。
+
+## AI要約
+- ルート: `app/api/ai/ledger-unmatch/route.ts`
+- 処理: OpenAI SDK を用い、入力サマリ + 代表サンプル明細から日本語の要約を生成。
+- モデル: 既定 `gpt-4o-mini`、`temperature=0.2`。
+- UX: ファイルダウンロード後にバックグラウンドで実行し、UIの「AI分析」ボックスへ結果を描画。
 
 ## 入出力仕様のポイント
 - 先頭シート固定。列はヘッダ名ではなく `TB_HEADER` / `LEDGER_HEADER` の列番号で参照（重複列名対策）。
