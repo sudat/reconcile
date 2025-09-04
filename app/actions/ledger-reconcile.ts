@@ -38,11 +38,10 @@ function isInPeriod(date8: string, periodYYYYMM: string) {
   return date8.startsWith(periodYYYYMM.replace("-", ""));
 }
 
-async function parseLedger(
-  file: File,
+async function parseLedgerFromBuffer(
+  buf: ArrayBuffer,
   opts: { period: string; selfBranch: string; counterBranch: string }
 ) {
-  const buf = await file.arrayBuffer();
   const wb = new ExcelJS.Workbook();
   await wb.xlsx.load(buf as ArrayBuffer);
   const ws = wb.worksheets[0];
@@ -103,14 +102,27 @@ export async function ledgerReconcileAction(form: FormData) {
     const branchB = String(form.get("branchB") || "");
     const fileA = form.get("ledgerA") as File | null;
     const fileB = form.get("ledgerB") as File | null;
+    const ledgerAUrl = String(form.get("ledgerAUrl") || "");
+    const ledgerBUrl = String(form.get("ledgerBUrl") || "");
 
     if (!period || !/^[0-9]{4}-[0-9]{2}$/.test(period)) return { ok: false, error: "対象期間(YYYY-MM)が不正です" };
     if (!branchA || !branchB) return { ok: false, error: "支店A/Bを選択してください" };
     if (branchA === branchB) return { ok: false, error: "支店Aと支店Bは異なる支店を選択してください" };
-    if (!fileA || !fileB) return { ok: false, error: "元帳ファイルが不足しています" };
+    // 入力は Blob URL 優先。なければ従来の File 入力を許容（後方互換）
+    let bufA: ArrayBuffer | null = null;
+    let bufB: ArrayBuffer | null = null;
 
-    const byDayA = await parseLedger(fileA, { period, selfBranch: branchA, counterBranch: branchB });
-    const byDayB = await parseLedger(fileB, { period, selfBranch: branchB, counterBranch: branchA });
+    if (ledgerAUrl && ledgerBUrl) {
+      const [ra, rb] = await Promise.all([fetch(ledgerAUrl), fetch(ledgerBUrl)]);
+      if (!ra.ok || !rb.ok) return { ok: false, error: "元帳ファイルの取得に失敗しました（Blob URL）" };
+      [bufA, bufB] = await Promise.all([ra.arrayBuffer(), rb.arrayBuffer()]);
+    } else {
+      if (!fileA || !fileB) return { ok: false, error: "元帳ファイルが不足しています" };
+      [bufA, bufB] = await Promise.all([fileA.arrayBuffer(), fileB.arrayBuffer()]);
+    }
+
+    const byDayA = await parseLedgerFromBuffer(bufA, { period, selfBranch: branchA, counterBranch: branchB });
+    const byDayB = await parseLedgerFromBuffer(bufB, { period, selfBranch: branchB, counterBranch: branchA });
 
     // 出力整形（各日付でA→B, B→A を横並び）
     const days = monthDays(period);

@@ -21,36 +21,78 @@ export default function LedgerForm({ onSubmit }: Props) {
     setLoading(true);
     setError(null);
     setLastFile(null);
-    const res = await onSubmit(formData);
-    setLoading(false);
-    if (!res?.ok) {
-      setError(res?.error ?? "エラーが発生しました");
-      return;
-    }
-    const file = res.file as
-      | { name: string; mime: string; base64: string }
-      | undefined;
-    if (!file) {
-      setError("出力ファイルの生成に失敗しました");
-      return;
-    }
+
     try {
-      const blob = new Blob(
-        [Uint8Array.from(atob(file.base64), (c) => c.charCodeAt(0))],
-        { type: file.mime }
-      );
-      const url = URL.createObjectURL(blob);
-      setLastFile(file.name);
-      if (downloadRef.current) {
-        downloadRef.current.href = url;
-        downloadRef.current.download = file.name;
-        downloadRef.current.click();
-        // revoke は少し遅延させる
-        setTimeout(() => URL.revokeObjectURL(url), 5000);
+      const { upload } = await import("@vercel/blob/client");
+
+      // 1) 元のFormDataから必要フィールドを取得
+      const period = String(formData.get("period") || "");
+      const branchA = String(formData.get("branchA") || "");
+      const branchB = String(formData.get("branchB") || "");
+      const fileA = formData.get("ledgerA") as File | null;
+      const fileB = formData.get("ledgerB") as File | null;
+      if (!period || !branchA || !branchB || !fileA || !fileB) {
+        setLoading(false);
+        setError("入力が不足しています");
+        return;
+      }
+
+      // 2) 先にVercel Blobへアップロード（multipartで大容量回避）
+      const [upA, upB] = await Promise.all([
+        upload(fileA.name, fileA, {
+          access: "public",
+          handleUploadUrl: "/api/blob/upload",
+          multipart: true,
+        }),
+        upload(fileB.name, fileB, {
+          access: "public",
+          handleUploadUrl: "/api/blob/upload",
+          multipart: true,
+        }),
+      ]);
+
+      // 3) Server Action へはURLのみ渡す（本体はBlobにある）
+      const fd = new FormData();
+      fd.set("period", period);
+      fd.set("branchA", branchA);
+      fd.set("branchB", branchB);
+      fd.set("ledgerAUrl", upA.url);
+      fd.set("ledgerBUrl", upB.url);
+
+      const res = await onSubmit(fd);
+      setLoading(false);
+      if (!res?.ok) {
+        setError(res?.error ?? "エラーが発生しました");
+        return;
+      }
+      const file = res.file as
+        | { name: string; mime: string; base64: string }
+        | undefined;
+      if (!file) {
+        setError("出力ファイルの生成に失敗しました");
+        return;
+      }
+      try {
+        const blob = new Blob(
+          [Uint8Array.from(atob(file.base64), (c) => c.charCodeAt(0))],
+          { type: file.mime }
+        );
+        const url = URL.createObjectURL(blob);
+        setLastFile(file.name);
+        if (downloadRef.current) {
+          downloadRef.current.href = url;
+          downloadRef.current.download = file.name;
+          downloadRef.current.click();
+          setTimeout(() => URL.revokeObjectURL(url), 5000);
+        }
+      } catch (e) {
+        console.error(e);
+        setError("ダウンロードに失敗しました");
       }
     } catch (e) {
       console.error(e);
-      setError("ダウンロードに失敗しました");
+      setLoading(false);
+      setError("アップロードに失敗しました");
     }
   }
 

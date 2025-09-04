@@ -17,7 +17,8 @@
 ## サーバーアクション
 - ファイル: `app/actions/ledger-reconcile.ts`
 - 関数: `ledgerReconcileAction(form: FormData)`
-- 入力: `period, branchA, branchB, ledgerA(File), ledgerB(File)`
+- 入力: `period, branchA, branchB, ledgerAUrl(string), ledgerBUrl(string)`
+  - 後方互換として `ledgerA(File), ledgerB(File)` も受容するが、既定はBlob URL方式。
 - 仕様:
   - 先頭シートのみ対象。列は `LEDGER_HEADER` の列番号で参照。
   - 科目は `11652090` のみ。
@@ -37,6 +38,17 @@
 ## 実装ファイル
 - `components/ledger/ledger-form.tsx`
 - `app/actions/ledger-reconcile.ts`
+- `app/api/blob/upload/route.ts`（Vercel Blobのクライアント直送トークン）
+
+## アップロード方式の変更（2025-09-04）
+
+- 目的: Vercelのボディ上限により発生するHTTP 413を回避するため、元帳ファイルはクライアントからVercel Blobへ直接アップロードする。
+- フロー:
+  1) クライアントで `@vercel/blob/client` の `upload()` を呼び、`/api/blob/upload` で発行されたトークンを用いて直接Blobへ送る（`multipart: true`）。
+  2) 返却された `url` を `ledgerAUrl` / `ledgerBUrl` としてServer Actionへ渡す。
+  3) Server ActionはBlob URLを `fetch()` し、ExcelJSで処理して結果XLSXを返す。
+
+セキュリティ注意: Vercel Blobの `access` は現状 `public` を使用。公開URLの取り扱いに留意し、保管期間・自動削除の運用は別途検討する。
 - `lib/counterparty.ts`（補助科目名→支店コード解決の共通化）
 
 ## 受入テスト（チェックリスト）
@@ -50,4 +62,3 @@
 - KISS: 2ファイル・1ペアに限定した最小UI、CSVは後回し。
 - DRY: 相手先解決ロジックを `lib/counterparty.ts` に共通化。
 - YAGNI: 許容誤差・月跨ぎ除外・複数ファイル/複数ペア同時処理は未実装。
-
