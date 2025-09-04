@@ -250,10 +250,11 @@ export async function ledgerReconcileAction(form: FormData) {
         const rowsA = (parsedA.rowsByDay.get(d) ?? []).slice();
         const rowsB = (parsedB.rowsByDay.get(d) ?? []).slice();
 
-        // B側を金額絶対値でグルーピングして照合（同額は除外）
+        // B側を金額（符号付き）でグルーピング
+        // 相殺条件は a.amountSigned + b.amountSigned === 0（符号反転で同額）
         const mapB = new Map<number, LedgerRow[]>();
         for (const r of rowsB) {
-          const key = Math.abs(r.amountSigned);
+          const key = r.amountSigned;
           const list = mapB.get(key) ?? [];
           list.push(r);
           mapB.set(key, list);
@@ -261,7 +262,7 @@ export async function ledgerReconcileAction(form: FormData) {
 
         const matchedB = new Set<LedgerRow>();
         for (const a of rowsA) {
-          const key = Math.abs(a.amountSigned);
+          const key = -a.amountSigned; // 反対符号で一致するBを探す
           const list = mapB.get(key);
           if (list && list.length > 0) {
             const b = list.shift()!; // 1つだけ消費
