@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { BRANCHES } from "@/constants/masterdata/master-data";
+import { Loader2 } from "lucide-react";
 
 type Props = {
   onSubmit: (form: FormData) => Promise<{ ok: boolean; error?: string; file?: { name: string; mime: string; base64: string } }>;
@@ -15,12 +16,18 @@ export default function LedgerForm({ onSubmit }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastFile, setLastFile] = useState<string | null>(null);
+  const [logs, setLogs] = useState<string[]>([]);
   const downloadRef = useRef<HTMLAnchorElement | null>(null);
+
+  const pushLog = (msg: string) => {
+    setLogs((prev) => [...prev, msg]);
+  };
 
   async function handleAction(formData: FormData) {
     setLoading(true);
     setError(null);
     setLastFile(null);
+    setLogs([]);
 
     try {
       const { upload } = await import("@vercel/blob/client");
@@ -38,6 +45,7 @@ export default function LedgerForm({ onSubmit }: Props) {
       }
 
       // 2) 先にVercel Blobへアップロード（multipartで大容量回避）
+      pushLog("[1/4] ファイルをアップロードしています（A/B）...");
       const [upA, upB] = await Promise.all([
         upload(fileA.name, fileA, {
           access: "public",
@@ -50,6 +58,7 @@ export default function LedgerForm({ onSubmit }: Props) {
           multipart: true,
         }),
       ]);
+      pushLog("  └ アップロード完了");
 
       // 3) Server Action へはURLのみ渡す（本体はBlobにある）
       const fd = new FormData();
@@ -59,40 +68,49 @@ export default function LedgerForm({ onSubmit }: Props) {
       fd.set("ledgerAUrl", upA.url);
       fd.set("ledgerBUrl", upB.url);
 
+      pushLog("[2/4] サーバで照合処理を実行中...");
       const res = await onSubmit(fd);
       setLoading(false);
       if (!res?.ok) {
         setError(res?.error ?? "エラーが発生しました");
+        pushLog(`  └ エラー: ${res?.error ?? "不明なエラー"}`);
         return;
       }
+      pushLog("  └ 照合処理が完了しました");
       const file = res.file as
         | { name: string; mime: string; base64: string }
         | undefined;
       if (!file) {
         setError("出力ファイルの生成に失敗しました");
+        pushLog("  └ 出力ファイルの生成に失敗しました");
         return;
       }
       try {
+        pushLog("[3/4] 結果ファイルを作成中...");
         const blob = new Blob(
           [Uint8Array.from(atob(file.base64), (c) => c.charCodeAt(0))],
           { type: file.mime }
         );
         const url = URL.createObjectURL(blob);
         setLastFile(file.name);
+        pushLog("[4/4] ダウンロードを開始します...");
         if (downloadRef.current) {
           downloadRef.current.href = url;
           downloadRef.current.download = file.name;
           downloadRef.current.click();
           setTimeout(() => URL.revokeObjectURL(url), 5000);
         }
+        pushLog("  └ ダウンロードリンクを開きました");
       } catch (e) {
         console.error(e);
         setError("ダウンロードに失敗しました");
+        pushLog("  └ ダウンロードに失敗しました");
       }
     } catch (e) {
       console.error(e);
       setLoading(false);
       setError("アップロードに失敗しました");
+      pushLog("  └ アップロードに失敗しました");
     }
   }
 
@@ -185,8 +203,15 @@ export default function LedgerForm({ onSubmit }: Props) {
             </div>
 
             <div className="flex gap-3">
-              <Button type="submit" disabled={loading}>
-                {loading ? "照合中..." : "照合を実行"}
+              <Button type="submit" disabled={loading} aria-busy={loading}>
+                {loading ? (
+                  <>
+                    <Loader2 className="animate-spin" />
+                    照合中...
+                  </>
+                ) : (
+                  "照合を実行"
+                )}
               </Button>
               <Button
                 type="reset"
@@ -194,12 +219,25 @@ export default function LedgerForm({ onSubmit }: Props) {
                 onClick={() => {
                   setError(null);
                   setLastFile(null);
+                  setLogs([]);
                 }}
               >
                 クリア
               </Button>
               <a ref={downloadRef} className="hidden" aria-hidden />
             </div>
+            {/* 実行ボタン下のリアルタイムログ */}
+            {logs.length > 0 && (
+              <div
+                className="mt-3 rounded-md border bg-muted/40 p-3 text-xs font-mono text-muted-foreground max-h-40 overflow-auto"
+                role="log"
+                aria-live="polite"
+              >
+                {logs.map((l, i) => (
+                  <div key={i}>{l}</div>
+                ))}
+              </div>
+            )}
             {lastFile && (
               <p className="text-sm text-muted-foreground">
                 出力ファイルをダウンロードしました: {lastFile}

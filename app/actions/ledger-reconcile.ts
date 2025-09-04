@@ -21,6 +21,23 @@ function asText(x: unknown): string {
   return String(x ?? "");
 }
 
+// Excelの計上日セルを yyyymmdd 文字列に正規化
+function normalizeDate8(v: unknown): string | null {
+  if (v == null || v === "") return null;
+  // ExcelJS は日付セルを Date で返すことがある
+  if (v instanceof Date) {
+    const y = v.getUTCFullYear();
+    const m = String(v.getUTCMonth() + 1).padStart(2, "0");
+    const d = String(v.getUTCDate()).padStart(2, "0");
+    return `${y}${m}${d}`;
+  }
+  // 文字列の場合は数字だけ抽出して先頭8桁を採用（例: 2025-03-01, 2025/03/01, 20250301）
+  const s = String(v).trim();
+  const digits = s.replace(/\D/g, "");
+  if (digits.length >= 8) return digits.slice(0, 8);
+  return null;
+}
+
 function monthDays(periodYYYYMM: string): string[] {
   const [y, m] = periodYYYYMM.split("-").map((s) => Number(s));
   if (!y || !m) return [];
@@ -69,10 +86,10 @@ async function parseLedgerFromBuffer(
     const row = ws.getRow(r);
     const branchCode = canonicalBranchCode(asText(row.getCell(col.branchCode).value));
     const accountCode = asText(row.getCell(col.accountCode).value);
-    const postingDate = asText(row.getCell(col.postingDate).value);
+    const postingDate = normalizeDate8(row.getCell(col.postingDate).value);
     if (branchCode !== self) continue; // 選択支店のみ
     if (accountCode !== INTERBRANCH_ACCOUNT_CODE) continue; // 本支店勘定のみ
-    if (!/^\d{8}$/.test(postingDate)) continue;
+    if (!postingDate) continue;
     if (!isInPeriod(postingDate, opts.period)) continue;
 
     // 相手先支店コードの解決（サブ科目コード→支店コード優先、なければ名称から）

@@ -13,6 +13,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useState } from "react";
+import { Loader2 } from "lucide-react";
 
 type Props = {
   onSubmit: (form: FormData) => Promise<{ ok: boolean; error?: string; results?: Array<{ leftBranch: string; rightBranch: string; leftAmount: number; rightAmount: number; diff: number; leftBranchName: string; rightBranchName: string; period: string }> }>;
@@ -61,8 +62,15 @@ export default function TbForm({ onSubmit }: Props) {
               </div>
             </div>
             <div className="flex gap-3">
-              <Button type="submit" disabled={loading}>
-                {loading ? "照合中..." : "照合を実行"}
+              <Button type="submit" disabled={loading} aria-busy={loading}>
+                {loading ? (
+                  <>
+                    <Loader2 className="animate-spin" />
+                    照合中...
+                  </>
+                ) : (
+                  "照合を実行"
+                )}
               </Button>
               <Button
                 type="reset"

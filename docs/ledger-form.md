@@ -12,6 +12,11 @@
   - `支店B`: `<select>`
   - `支店Bの元帳`: `<input type="file" accept=".xlsx">`
 - 操作: 「照合を実行」→ サーバーアクションを起動し、出力XLSXを即時ダウンロード。
+- 実行中のフィードバック（2025-09-04 追加）
+  - 実行ボタン内にスピナー（`Loader2`）を表示。
+  - 実行ボタン下にリアルタイムログを表示（クライアント計測）。
+    - 例: `[1/4] アップロード中 → [2/4] サーバ照合中 → [3/4] 結果作成中 → [4/4] ダウンロード開始`。
+    - エラー時は当該行に `エラー:` を追記。
 - エラーハンドリング: 上部にメッセージ表示。`reset` で消去。
 
 ## サーバーアクション
@@ -20,8 +25,9 @@
 - 入力: `period, branchA, branchB, ledgerAUrl(string), ledgerBUrl(string)`
   - 後方互換として `ledgerA(File), ledgerB(File)` も受容するが、既定はBlob URL方式。
 - 仕様:
-  - 先頭シートのみ対象。列は `LEDGER_HEADER` の列番号で参照。
-  - 科目は `11652090` のみ。
+- 先頭シートのみ対象。列は `LEDGER_HEADER` の列番号で参照。
+- 科目は `11652090` のみ。
+- 計上日セルは文字列(`yyyymmdd`)/Excel日付どちらでも受付。実装側で `yyyymmdd` に正規化（KISS）。
   - 相手先支店の決定順序（DRY/KISS）
     1) `resolveBranchCodeBySubaccount(subCode)`（静的表）
     2) `resolveCounterpartyCodeFromSubName(subName)`（支店名エイリアス＋先頭一致）
