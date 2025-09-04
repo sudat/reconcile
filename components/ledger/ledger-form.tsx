@@ -77,8 +77,9 @@ export default function LedgerForm({ onSubmit }: Props) {
       pushLog("[2/4] サーバで照合処理を実行中...");
       const res = await onSubmit(fd);
       if (!res || res.ok === false) {
-        setError((res as any)?.error ?? "エラーが発生しました");
-        pushLog(`  └ エラー: ${(res as any)?.error ?? "不明なエラー"}`);
+        const errorMsg = (res && 'error' in res) ? res.error : undefined;
+        setError(errorMsg ?? "エラーが発生しました");
+        pushLog(`  └ エラー: ${errorMsg ?? "不明なエラー"}`);
         return;
       }
       pushLog("  └ 照合処理が完了しました");

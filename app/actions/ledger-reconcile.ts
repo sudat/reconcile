@@ -138,19 +138,19 @@ export async function ledgerReconcileAction(form: FormData) {
     const ledgerAUrl = String(form.get("ledgerAUrl") || "");
     const ledgerBUrl = String(form.get("ledgerBUrl") || "");
 
-    if (!period || !/^[0-9]{4}-[0-9]{2}$/.test(period)) return { ok: false, error: "対象期間(YYYY-MM)が不正です" };
-    if (!branchA || !branchB) return { ok: false, error: "支店A/Bを選択してください" };
-    if (branchA === branchB) return { ok: false, error: "支店Aと支店Bは異なる支店を選択してください" };
+    if (!period || !/^[0-9]{4}-[0-9]{2}$/.test(period)) return { ok: false as const, error: "対象期間(YYYY-MM)が不正です" };
+    if (!branchA || !branchB) return { ok: false as const, error: "支店A/Bを選択してください" };
+    if (branchA === branchB) return { ok: false as const, error: "支店Aと支店Bは異なる支店を選択してください" };
     // 入力は Blob URL 優先。なければ従来の File 入力を許容（後方互換）
     let bufA: ArrayBuffer | null = null;
     let bufB: ArrayBuffer | null = null;
 
     if (ledgerAUrl && ledgerBUrl) {
       const [ra, rb] = await Promise.all([fetch(ledgerAUrl), fetch(ledgerBUrl)]);
-      if (!ra.ok || !rb.ok) return { ok: false, error: "元帳ファイルの取得に失敗しました（Blob URL）" };
+      if (!ra.ok || !rb.ok) return { ok: false as const, error: "元帳ファイルの取得に失敗しました（Blob URL）" };
       [bufA, bufB] = await Promise.all([ra.arrayBuffer(), rb.arrayBuffer()]);
     } else {
-      if (!fileA || !fileB) return { ok: false, error: "元帳ファイルが不足しています" };
+      if (!fileA || !fileB) return { ok: false as const, error: "元帳ファイルが不足しています" };
       [bufA, bufB] = await Promise.all([fileA.arrayBuffer(), fileB.arrayBuffer()]);
     }
 
@@ -182,7 +182,7 @@ export async function ledgerReconcileAction(form: FormData) {
 
     // 列が多すぎる場合は安全側でエラー（ユーザ要望）
     if (subColsA.length > 20 || subColsB.length > 20)
-      return { ok: false, error: "補助科目の列数が多すぎます（>20）。設計見直しが必要です。" };
+      return { ok: false as const, error: "補助科目の列数が多すぎます（>20）。設計見直しが必要です。" };
 
     const wb = new ExcelJS.Workbook();
     const ws = wb.addWorksheet("by_day");
@@ -287,7 +287,7 @@ export async function ledgerReconcileAction(form: FormData) {
     // 片方もなければ既存どおり単独ファイルを返却
     if (unmatchedA.length === 0 && unmatchedB.length === 0) {
       return {
-        ok: true,
+        ok: true as const,
         files: [
           {
             name: filename,
@@ -327,7 +327,7 @@ export async function ledgerReconcileAction(form: FormData) {
     const filenameU = `ledger-unmatch_${period}_${branchA}-${branchB}.xlsx`;
 
     return {
-      ok: true,
+      ok: true as const,
       files: [
         {
           name: filename,
@@ -348,6 +348,6 @@ export async function ledgerReconcileAction(form: FormData) {
       },
     };
   } catch (e: unknown) {
-    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+    return { ok: false as const, error: e instanceof Error ? e.message : String(e) };
   }
 }

@@ -60,13 +60,13 @@ export async function tbReconcileAction(_prevState: unknown, form: FormData) {
     form.get("aggregateBranches") ?? form.get("aggregatePayments") ?? "on"
   );
   const useKobeGrouping = aggregateFlagRaw === "on" || aggregateFlagRaw === "true" || aggregateFlagRaw === "1";
-  if (!file) return { ok: false, error: "試算表ファイルが未指定です" };
+  if (!file) return { ok: false as const, error: "試算表ファイルが未指定です" };
 
   const buf = await file.arrayBuffer();
   const wb = new ExcelJS.Workbook();
   await wb.xlsx.load(buf as ArrayBuffer);
   const ws = wb.worksheets[0];
-  if (!ws) return { ok: false, error: "シートが見つかりません" };
+  if (!ws) return { ok: false as const, error: "シートが見つかりません" };
 
   const col = {
     branchCode: findCol("対象組織コード")!,
@@ -84,7 +84,7 @@ export async function tbReconcileAction(_prevState: unknown, form: FormData) {
 
   for (const [k, v] of Object.entries(col)) {
     if (!v || typeof v !== "number") {
-      return { ok: false, error: `必要列が見つかりません: ${k}` };
+      return { ok: false as const, error: `必要列が見つかりません: ${k}` };
     }
   }
 
@@ -166,5 +166,5 @@ export async function tbReconcileAction(_prevState: unknown, form: FormData) {
     period,
   }));
 
-  return { ok: true, results: withNames };
+  return { ok: true as const, results: withNames };
 }
