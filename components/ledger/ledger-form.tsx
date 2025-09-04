@@ -27,6 +27,7 @@ export default function LedgerForm({ onSubmit }: Props) {
   const [aiLoading, setAiLoading] = useState(false);
   const [aiSummary, setAiSummary] = useState<string | null>(null);
   const [aiError, setAiError] = useState<string | null>(null);
+  const aiReqRef = useRef(0); // AIリクエストの無効化用トークン
   const downloadRef = useRef<HTMLAnchorElement | null>(null);
 
   const pushLog = (msg: string) => {
@@ -41,6 +42,7 @@ export default function LedgerForm({ onSubmit }: Props) {
     setAiLoading(false);
     setAiSummary(null);
     setAiError(null);
+    aiReqRef.current++; // 前回のAI処理を無効化
 
     try {
       const { upload } = await import("@vercel/blob/client");
@@ -136,6 +138,7 @@ export default function LedgerForm({ onSubmit }: Props) {
           // アンマッチがある場合はAI分析をバックグラウンド開始
           if (res.meta?.hasUnmatch && res.analysis) {
             try {
+              const reqId = ++aiReqRef.current;
               setAiLoading(true);
               pushLog("[AI] アンマッチ結果を分析中…");
               const r = await fetch("/api/ai/ledger-unmatch", {
@@ -144,6 +147,7 @@ export default function LedgerForm({ onSubmit }: Props) {
                 body: JSON.stringify(res.analysis),
               });
               const json = await r.json();
+              if (aiReqRef.current !== reqId) return; // クリア/再実行で無効化された場合は破棄
               if (!json.ok) {
                 setAiError(json.error || "AI分析に失敗しました");
                 pushLog("[AI] 解析エラー: " + (json.error || "不明なエラー"));
@@ -153,10 +157,11 @@ export default function LedgerForm({ onSubmit }: Props) {
               }
             } catch (e) {
               console.error(e);
+              if (aiReqRef.current !== reqId) return; // 無効化済みなら何もしない
               setAiError("AI分析に失敗しました");
               pushLog("[AI] 解析中にエラーが発生しました");
             } finally {
-              setAiLoading(false);
+              if (aiReqRef.current === reqId) setAiLoading(false);
             }
           }
         }
@@ -280,6 +285,10 @@ export default function LedgerForm({ onSubmit }: Props) {
                   setError(null);
                   setLastFile(null);
                   setLogs([]);
+                  aiReqRef.current++; // 進行中のAIを無効化
+                  setAiLoading(false);
+                  setAiSummary(null);
+                  setAiError(null);
                 }}
               >
                 クリア
