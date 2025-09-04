@@ -2,6 +2,7 @@
 import ExcelJS from "exceljs";
 import { LEDGER_HEADER } from "@/constants/reports/report-header";
 import { BRANCHES } from "@/constants/masterdata/master-data";
+import { SUBACCOUNT_BRANCH_MAP } from "@/constants/masterdata/subaccount-branch-map";
 import { canonicalBranchCode } from "@/constants/masterdata/aliases";
 import { resolveBranchCodeBySubaccount } from "@/constants/masterdata/subaccount-branch-map";
 import { resolveCounterpartyCodeFromSubName } from "@/lib/counterparty";
@@ -143,15 +144,35 @@ export async function ledgerReconcileAction(form: FormData) {
 
     // 出力整形（各日付でA→B, B→A を横並び）
     const days = monthDays(period);
-    const maxA = Math.max(0, ...days.map((d) => (byDayA.get(d)?.length ?? 0)));
-    const maxB = Math.max(0, ...days.map((d) => (byDayB.get(d)?.length ?? 0)));
+
+    // 列は相手支店向けの補助科目コードで固定化
+    const counterForA = canonicalBranchCode(branchB);
+    const counterForB = canonicalBranchCode(branchA);
+    const subColsA = Array.from(
+      new Set(
+        SUBACCOUNT_BRANCH_MAP.filter((x) => x.branchCode && canonicalBranchCode(x.branchCode) === counterForA).map(
+          (x) => x.subAccount
+        )
+      )
+    ).sort();
+    const subColsB = Array.from(
+      new Set(
+        SUBACCOUNT_BRANCH_MAP.filter((x) => x.branchCode && canonicalBranchCode(x.branchCode) === counterForB).map(
+          (x) => x.subAccount
+        )
+      )
+    ).sort();
+
+    // 列が多すぎる場合は安全側でエラー（ユーザ要望）
+    if (subColsA.length > 20 || subColsB.length > 20)
+      return { ok: false, error: "補助科目の列数が多すぎます（>20）。設計見直しが必要です。" };
 
     const wb = new ExcelJS.Workbook();
     const ws = wb.addWorksheet("by_day");
     const header = [
       "date",
-      ...Array.from({ length: maxA }, (_, i) => [`A${i + 1}`, `A${i + 1}_sub`]).flat(),
-      ...Array.from({ length: maxB }, (_, i) => [`B${i + 1}`, `B${i + 1}_sub`]).flat(),
+      ...subColsA.map((c) => `Sub:A_${c}`),
+      ...subColsB.map((c) => `Sub:B_${c}`),
       "sumA",
       "sumB",
       "diff",
@@ -163,10 +184,19 @@ export async function ledgerReconcileAction(form: FormData) {
       const arrB = byDayB.get(d) ?? [];
       const sumA = arrA.reduce((a, b) => a + b.amount, 0);
       const sumB = arrB.reduce((a, b) => a + b.amount, 0);
-      const padA = Array.from({ length: Math.max(0, maxA - arrA.length) }, () => ({ amount: "", sub: "" }));
-      const padB = Array.from({ length: Math.max(0, maxB - arrB.length) }, () => ({ amount: "", sub: "" }));
-      const cellsA = [...arrA, ...padA].flatMap((x) => [x.amount, x.sub]);
-      const cellsB = [...arrB, ...padB].flatMap((x) => [x.amount, x.sub]);
+      const sumBy = (arr: { amount: number; sub: string }[], code: string) => {
+        let has = false;
+        const s = arr.reduce((acc, x) => {
+          if (x.sub === code) {
+            has = true;
+            return acc + x.amount;
+          }
+          return acc;
+        }, 0);
+        return has ? s : "";
+      };
+      const cellsA = subColsA.map((c) => sumBy(arrA, c));
+      const cellsB = subColsB.map((c) => sumBy(arrB, c));
       const row = [
         `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6, 8)}`,
         ...cellsA,

@@ -70,7 +70,6 @@ export default function LedgerForm({ onSubmit }: Props) {
 
       pushLog("[2/4] サーバで照合処理を実行中...");
       const res = await onSubmit(fd);
-      setLoading(false);
       if (!res?.ok) {
         setError(res?.error ?? "エラーが発生しました");
         pushLog(`  └ エラー: ${res?.error ?? "不明なエラー"}`);
@@ -108,9 +107,10 @@ export default function LedgerForm({ onSubmit }: Props) {
       }
     } catch (e) {
       console.error(e);
-      setLoading(false);
       setError("アップロードに失敗しました");
       pushLog("  └ アップロードに失敗しました");
+    } finally {
+      setLoading(false);
     }
   }
 
