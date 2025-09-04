@@ -5,10 +5,10 @@
 ## 実装構成（サーバーアクション）
 
 - `app/actions/tb-reconcile.ts`
-  - 関数: `tbReconcileAction(form: FormData)`
+  - 関数: `tbReconcileAction(prevState, form: FormData)`（2025-09-04 変更）
   - 役割: 試算表（TB）に基づくペアごとの期末残高突合（A→B と B→A の和 = 0 を一致条件）。
   - 入力: `period(YYYY-MM)`, `tb(File)`, `aggregateBranches(ON/OFF)`
-  - 出力: JSON（UI表示用の結果配列）。
+  - 出力: JSON（UI表示用の結果配列）。`useActionState` から呼び出し、`pending` によりローディング表示を制御。
   - 主要仕様:
     - `TB_HEADER` の列番号で読み取り、科目 `11652090` のみ対象。
     - 相手先支店の解決は `resolveBranchCodeBySubaccount()` を優先し、なければ補助科目名から推定。
@@ -24,6 +24,7 @@
     - `計上日` は文字列(`yyyymmdd`)またはExcel日付の双方に対応し、`yyyymmdd` に正規化してから期間フィルタを適用（KISS）。
     - 金額は `借方入力金額+借方入力税額` と `貸方入力金額+貸方入力税額` から `signed = 借方-貸方` を算出。
     - それぞれのファイルから「相手支店向き」の行のみ抽出し、日別に `sumA`,`sumB`,`diff` を計算。
+    - `by_day` のヘッダは `date, A1,A1_sub, …, An,An_sub, B1,B1_sub, …, Bm,Bm_sub, sumA, sumB, diff`。`*_sub` は補助科目コード。
 
 ## 入出力仕様のポイント
 - 先頭シート固定。列はヘッダ名ではなく `TB_HEADER` / `LEDGER_HEADER` の列番号で参照（重複列名対策）。

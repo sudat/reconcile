@@ -12,30 +12,21 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { useState } from "react";
+import { useActionState, useState } from "react";
 import { Loader2 } from "lucide-react";
 
+type Row = { leftBranch: string; rightBranch: string; leftAmount: number; rightAmount: number; diff: number; leftBranchName: string; rightBranchName: string; period: string };
+type TBState = { ok: boolean; error?: string | null; results?: Row[] | null };
 type Props = {
-  onSubmit: (form: FormData) => Promise<{ ok: boolean; error?: string; results?: Array<{ leftBranch: string; rightBranch: string; leftAmount: number; rightAmount: number; diff: number; leftBranchName: string; rightBranchName: string; period: string }> }>;
+  // useActionState で直接サーバーアクションを受け取る（prevState, formData）
+  onSubmit: (prevState: TBState, formData: FormData) => Promise<TBState>;
 };
 
 export default function TbForm({ onSubmit }: Props) {
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [rows, setRows] = useState<Array<{ leftBranch: string; rightBranch: string; leftAmount: number; rightAmount: number; diff: number; leftBranchName: string; rightBranchName: string; period: string }> | null>(null);
-
-  async function handleAction(formData: FormData) {
-    setLoading(true);
-    setError(null);
-    setRows(null);
-    const res = await onSubmit(formData);
-    setLoading(false);
-    if (!res?.ok) {
-      setError(res?.error ?? "エラーが発生しました");
-    } else {
-      setRows(res.results ?? []);
-    }
-  }
+  const initial: TBState = { ok: false, error: null, results: null };
+  const [state, formAction, pending] = useActionState(onSubmit, initial);
+  // 表示のクリア用（useActionState の state はクライアントから直接クリアできないため）
+  const [hidden, setHidden] = useState(false);
 
   return (
     <div className="mx-auto max-w-4xl w-full space-y-6">
@@ -44,7 +35,13 @@ export default function TbForm({ onSubmit }: Props) {
           <CardTitle>本支店勘定の照合（TB）</CardTitle>
         </CardHeader>
         <CardContent className="font-normal">
-          <form action={handleAction} className="space-y-4">
+          <form
+            action={(fd) => {
+              setHidden(false);
+              return formAction(fd);
+            }}
+            className="space-y-4"
+          >
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="period">対象期間 (YYYY-MM)</Label>
@@ -62,8 +59,8 @@ export default function TbForm({ onSubmit }: Props) {
               </div>
             </div>
             <div className="flex gap-3">
-              <Button type="submit" disabled={loading} aria-busy={loading}>
-                {loading ? (
+              <Button type="submit" disabled={pending} aria-busy={pending}>
+                {pending ? (
                   <>
                     <Loader2 className="animate-spin" />
                     照合中...
@@ -76,8 +73,7 @@ export default function TbForm({ onSubmit }: Props) {
                 type="reset"
                 variant="outline"
                 onClick={() => {
-                  setError(null);
-                  setRows(null);
+                  setHidden(true);
                 }}
               >
                 クリア
@@ -85,18 +81,20 @@ export default function TbForm({ onSubmit }: Props) {
             </div>
             <div className="flex items-center gap-3 pt-1">
               <Switch
-                id="aggregatePayments"
-                name="aggregatePayments"
+                id="aggregateBranches"
+                name="aggregateBranches"
                 defaultChecked
               />
-              <Label htmlFor="aggregatePayments">店を集約</Label>
+              <Label htmlFor="aggregateBranches">店を集約</Label>
             </div>
           </form>
-          {error && <p className="mt-4 text-sm text-destructive">{error}</p>}
+          {!hidden && state?.error && (
+            <p className="mt-4 text-sm text-destructive">{state.error}</p>
+          )}
         </CardContent>
       </Card>
 
-      {Array.isArray(rows) && (
+      {!hidden && Array.isArray(state?.results) && (
         <Card>
           <CardHeader className="font-normal">
             <CardTitle>照合結果（ペア別）</CardTitle>
@@ -113,14 +111,14 @@ export default function TbForm({ onSubmit }: Props) {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {rows.length === 0 ? (
+                {state.results.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={5}>
                       一致しないペアはありませんでした。
                     </TableCell>
                   </TableRow>
                 ) : (
-                  rows.map((r, i: number) => (
+                  state.results.map((r: Row, i: number) => (
                     <TableRow
                       key={i}
                       className={

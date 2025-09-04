@@ -80,7 +80,7 @@ async function parseLedgerFromBuffer(
   const self = canonicalBranchCode(opts.selfBranch);
   const counter = canonicalBranchCode(opts.counterBranch);
 
-  const byDay: Map<DayKey, number[]> = new Map();
+  const byDay: Map<DayKey, { amount: number; sub: string }[]> = new Map();
 
   for (let r = 2; r <= ws.rowCount; r++) {
     const row = ws.getRow(r);
@@ -106,7 +106,7 @@ async function parseLedgerFromBuffer(
     const signed = amountDebit - amountCredit; // 借方-貸方
 
     if (!byDay.has(postingDate)) byDay.set(postingDate, []);
-    byDay.get(postingDate)!.push(signed);
+    byDay.get(postingDate)!.push({ amount: signed, sub: subCode });
   }
 
   return byDay;
@@ -150,8 +150,8 @@ export async function ledgerReconcileAction(form: FormData) {
     const ws = wb.addWorksheet("by_day");
     const header = [
       "date",
-      ...Array.from({ length: maxA }, (_, i) => `A${i + 1}`),
-      ...Array.from({ length: maxB }, (_, i) => `B${i + 1}`),
+      ...Array.from({ length: maxA }, (_, i) => [`A${i + 1}`, `A${i + 1}_sub`]).flat(),
+      ...Array.from({ length: maxB }, (_, i) => [`B${i + 1}`, `B${i + 1}_sub`]).flat(),
       "sumA",
       "sumB",
       "diff",
@@ -161,12 +161,16 @@ export async function ledgerReconcileAction(form: FormData) {
     for (const d of days) {
       const arrA = byDayA.get(d) ?? [];
       const arrB = byDayB.get(d) ?? [];
-      const sumA = arrA.reduce((a, b) => a + b, 0);
-      const sumB = arrB.reduce((a, b) => a + b, 0);
+      const sumA = arrA.reduce((a, b) => a + b.amount, 0);
+      const sumB = arrB.reduce((a, b) => a + b.amount, 0);
+      const padA = Array.from({ length: Math.max(0, maxA - arrA.length) }, () => ({ amount: "", sub: "" }));
+      const padB = Array.from({ length: Math.max(0, maxB - arrB.length) }, () => ({ amount: "", sub: "" }));
+      const cellsA = [...arrA, ...padA].flatMap((x) => [x.amount, x.sub]);
+      const cellsB = [...arrB, ...padB].flatMap((x) => [x.amount, x.sub]);
       const row = [
         `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6, 8)}`,
-        ...[...arrA, ...Array(Math.max(0, maxA - arrA.length)).fill("")],
-        ...[...arrB, ...Array(Math.max(0, maxB - arrB.length)).fill("")],
+        ...cellsA,
+        ...cellsB,
         sumA,
         sumB,
         sumA + sumB,

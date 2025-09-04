@@ -51,10 +51,14 @@ export type TBPairResult = {
   diff: number;
 };
 
-export async function tbReconcileAction(form: FormData) {
+// useActionState 用に prevState を第1引数で受け取れるようにする
+export async function tbReconcileAction(_prevState: unknown, form: FormData) {
   const file = form.get("tb") as File | null;
   const period = String(form.get("period") || ""); // YYYY-MM（今は表示のみ）
-  const aggregateFlagRaw = String(form.get("aggregateBranches") ?? "on");
+  // UI側の名称ぶれ対策（DRY）: aggregateBranches / aggregatePayments の両方を受ける
+  const aggregateFlagRaw = String(
+    form.get("aggregateBranches") ?? form.get("aggregatePayments") ?? "on"
+  );
   const useKobeGrouping = aggregateFlagRaw === "on" || aggregateFlagRaw === "true" || aggregateFlagRaw === "1";
   if (!file) return { ok: false, error: "試算表ファイルが未指定です" };
 

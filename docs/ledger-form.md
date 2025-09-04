@@ -37,7 +37,8 @@
 ## 出力
 - 形式: XLSX（ExcelJS）。
 - シート `by_day`:
-  - ヘッダ: `date, A1..An, B1..Bm, sumA, sumB, diff`
+  - ヘッダ: `date, A1,A1_sub, …, An,An_sub, B1,B1_sub, …, Bm,Bm_sub, sumA, sumB, diff`
+  - 各 `A*`/`B*` は金額（借方-貸方）。各 `_sub` はその金額に対応する補助科目コード（Subaccount）。
   - 行: 期間内日付を全行生成（存在しない日は空欄）。
 - シート `info`: `period, branchA(name,code), branchB(name,code)`
 
