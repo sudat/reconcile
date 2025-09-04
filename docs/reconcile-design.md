@@ -18,7 +18,7 @@
   - 関数: `ledgerReconcileAction(form: FormData)`
   - 役割: 支店A/Bの元帳2ファイルを日別で突合し、XLSX を返却。
   - 入力: `period(YYYY-MM)`, `branchA`, `ledgerA(File)`, `branchB`, `ledgerB(File)`
-  - 出力: `xlsx`（base64, `by_day`/`info` シート）。
+  - 出力: `xlsx`（base64, `by_day`/`info` シート）。アンマッチあり時は別ファイル `ledger-unmatch_*.xlsx` を追加返却。
   - 主要仕様:
     - `LEDGER_HEADER` の列番号で読み取り、科目 `11652090` のみ対象。
     - `計上日` は文字列(`yyyymmdd`)またはExcel日付の双方に対応し、`yyyymmdd` に正規化してから期間フィルタを適用（KISS）。
@@ -26,6 +26,9 @@
     - それぞれのファイルから「相手支店向き」の行のみ抽出し、日別に `sumA`,`sumB`,`diff` を計算。
     - `by_day` のヘッダは `date, Sub:A_<sub>..., Sub:B_<sub>..., sumA, sumB, diff`。各 `<sub>` は相手支店向けの補助科目コードで昇順固定。
     - 列が20を超える場合はエラーを返して停止（ユーザ要望に基づく安全策）。
+    - アンマッチ抽出: `diff != 0` の日付に限定し、AとBで同額（絶対値）が1:1対応する明細は相殺、残りを `unmatched` に出力。
+      - 出力シート構成: 左にAの全列（`LEDGER_HEADER`）、右にBの全列。同一シート1ヘッダ、A行→B行の順。
+      - サーバー応答 `meta` に `hasUnmatch, diffDays, unmatchCountA, unmatchCountB` を含め、UIログでステップ表示に利用。
 
 ## 入出力仕様のポイント
 - 先頭シート固定。列はヘッダ名ではなく `TB_HEADER` / `LEDGER_HEADER` の列番号で参照（重複列名対策）。

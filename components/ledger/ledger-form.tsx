@@ -8,8 +8,14 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { BRANCHES } from "@/constants/masterdata/master-data";
 import { Loader2 } from "lucide-react";
 
+type DownloadFile = { name: string; mime: string; base64: string };
 type Props = {
-  onSubmit: (form: FormData) => Promise<{ ok: boolean; error?: string; file?: { name: string; mime: string; base64: string } }>;
+  onSubmit: (
+    form: FormData
+  ) => Promise<
+    | { ok: false; error?: string }
+    | { ok: true; files: DownloadFile[]; meta?: { hasUnmatch?: boolean; diffDays?: number; unmatchCountA?: number; unmatchCountB?: number } }
+  >;
 };
 
 export default function LedgerForm({ onSubmit }: Props) {
@@ -70,36 +76,55 @@ export default function LedgerForm({ onSubmit }: Props) {
 
       pushLog("[2/4] サーバで照合処理を実行中...");
       const res = await onSubmit(fd);
-      if (!res?.ok) {
-        setError(res?.error ?? "エラーが発生しました");
-        pushLog(`  └ エラー: ${res?.error ?? "不明なエラー"}`);
+      if (!res || res.ok === false) {
+        setError((res as any)?.error ?? "エラーが発生しました");
+        pushLog(`  └ エラー: ${(res as any)?.error ?? "不明なエラー"}`);
         return;
       }
       pushLog("  └ 照合処理が完了しました");
-      const file = res.file as
-        | { name: string; mime: string; base64: string }
-        | undefined;
-      if (!file) {
+      const files = res.files ?? [];
+      if (files.length === 0) {
         setError("出力ファイルの生成に失敗しました");
         pushLog("  └ 出力ファイルの生成に失敗しました");
         return;
       }
       try {
-        pushLog("[3/4] 結果ファイルを作成中...");
-        const blob = new Blob(
-          [Uint8Array.from(atob(file.base64), (c) => c.charCodeAt(0))],
-          { type: file.mime }
+        // 1つ目（by_day）
+        pushLog("[3/4] 日別の照合ファイルを作成中...");
+        const [file1, file2] = files;
+        const blob1 = new Blob(
+          [Uint8Array.from(atob(file1.base64), (c) => c.charCodeAt(0))],
+          { type: file1.mime }
         );
-        const url = URL.createObjectURL(blob);
-        setLastFile(file.name);
+        const url1 = URL.createObjectURL(blob1);
+        setLastFile(file1.name);
         pushLog("[4/4] ダウンロードを開始します...");
         if (downloadRef.current) {
-          downloadRef.current.href = url;
-          downloadRef.current.download = file.name;
+          downloadRef.current.href = url1;
+          downloadRef.current.download = file1.name;
           downloadRef.current.click();
-          setTimeout(() => URL.revokeObjectURL(url), 5000);
+          setTimeout(() => URL.revokeObjectURL(url1), 5000);
         }
-        pushLog("  └ ダウンロードリンクを開きました");
+        pushLog("  └ 日別の照合ファイルをダウンロードしました");
+
+        // アンマッチがあれば2つ目（unmatched）も続けてダウンロード
+        if (file2) {
+          pushLog("[追加] アンマッチ抽出の結果ファイルを作成中...");
+          const blob2 = new Blob(
+            [Uint8Array.from(atob(file2.base64), (c) => c.charCodeAt(0))],
+            { type: file2.mime }
+          );
+          const url2 = URL.createObjectURL(blob2);
+          if (downloadRef.current) {
+            downloadRef.current.href = url2;
+            downloadRef.current.download = file2.name;
+            downloadRef.current.click();
+            setTimeout(() => URL.revokeObjectURL(url2), 5000);
+          }
+          pushLog(
+            `  └ アンマッチファイルをダウンロードしました (${res.meta?.unmatchCountA ?? 0}件(A) / ${res.meta?.unmatchCountB ?? 0}件(B))`
+          );
+        }
       } catch (e) {
         console.error(e);
         setError("ダウンロードに失敗しました");

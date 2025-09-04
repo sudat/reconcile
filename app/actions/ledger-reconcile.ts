@@ -10,6 +10,13 @@ import { resolveCounterpartyCodeFromSubName } from "@/lib/counterparty";
 const INTERBRANCH_ACCOUNT_CODE = "11652090";
 
 type DayKey = string; // yyyymmdd
+type LedgerCell = string | number;
+type LedgerRow = {
+  day: DayKey;
+  rowIndex: number;
+  cells: LedgerCell[]; // LEDGER_HEADER の順
+  amountSigned: number; // (借方+借方税) - (貸方+貸方税)
+};
 
 function toNumber(x: unknown): number {
   if (x === null || typeof x === "undefined" || x === "") return 0;
@@ -82,6 +89,7 @@ async function parseLedgerFromBuffer(
   const counter = canonicalBranchCode(opts.counterBranch);
 
   const byDay: Map<DayKey, { amount: number; sub: string }[]> = new Map();
+  const rowsByDay: Map<DayKey, LedgerRow[]> = new Map();
 
   for (let r = 2; r <= ws.rowCount; r++) {
     const row = ws.getRow(r);
@@ -108,9 +116,16 @@ async function parseLedgerFromBuffer(
 
     if (!byDay.has(postingDate)) byDay.set(postingDate, []);
     byDay.get(postingDate)!.push({ amount: signed, sub: subCode });
+
+    // アンマッチファイル用に元帳の全列も保持
+    const cells: LedgerCell[] = LEDGER_HEADER.map((h) =>
+      h.type === "number" ? toNumber(row.getCell(h.column).value) : asText(row.getCell(h.column).value)
+    );
+    if (!rowsByDay.has(postingDate)) rowsByDay.set(postingDate, []);
+    rowsByDay.get(postingDate)!.push({ day: postingDate, rowIndex: r, cells, amountSigned: signed });
   }
 
-  return byDay;
+  return { byDay, rowsByDay };
 }
 
 export async function ledgerReconcileAction(form: FormData) {
@@ -139,8 +154,10 @@ export async function ledgerReconcileAction(form: FormData) {
       [bufA, bufB] = await Promise.all([fileA.arrayBuffer(), fileB.arrayBuffer()]);
     }
 
-    const byDayA = await parseLedgerFromBuffer(bufA, { period, selfBranch: branchA, counterBranch: branchB });
-    const byDayB = await parseLedgerFromBuffer(bufB, { period, selfBranch: branchB, counterBranch: branchA });
+    const parsedA = await parseLedgerFromBuffer(bufA, { period, selfBranch: branchA, counterBranch: branchB });
+    const parsedB = await parseLedgerFromBuffer(bufB, { period, selfBranch: branchB, counterBranch: branchA });
+    const byDayA = parsedA.byDay;
+    const byDayB = parsedB.byDay;
 
     // 出力整形（各日付でA→B, B→A を横並び）
     const days = monthDays(period);
@@ -179,6 +196,7 @@ export async function ledgerReconcileAction(form: FormData) {
     ];
     ws.addRow(header);
 
+    const diffDays: string[] = [];
     for (const d of days) {
       const arrA = byDayA.get(d) ?? [];
       const arrB = byDayB.get(d) ?? [];
@@ -206,6 +224,7 @@ export async function ledgerReconcileAction(form: FormData) {
         sumA + sumB,
       ];
       ws.addRow(row);
+      if (sumA + sumB !== 0) diffDays.push(d);
     }
 
     // 目印として先頭行に支店名も追加（別シート）
@@ -219,9 +238,113 @@ export async function ledgerReconcileAction(form: FormData) {
     const ab = (await wb.xlsx.writeBuffer()) as ArrayBuffer;
     const base64 = Buffer.from(ab).toString("base64");
     const filename = `ledger-match_${period}_${branchA}-${branchB}.xlsx`;
+
+    // アンマッチ抽出: diff != 0 の日のみ対象
+    let unmatchCountA = 0;
+    let unmatchCountB = 0;
+    const unmatchedA: LedgerRow[] = [];
+    const unmatchedB: LedgerRow[] = [];
+
+    if (diffDays.length > 0) {
+      for (const d of diffDays) {
+        const rowsA = (parsedA.rowsByDay.get(d) ?? []).slice();
+        const rowsB = (parsedB.rowsByDay.get(d) ?? []).slice();
+
+        // B側を金額絶対値でグルーピングして照合（同額は除外）
+        const mapB = new Map<number, LedgerRow[]>();
+        for (const r of rowsB) {
+          const key = Math.abs(r.amountSigned);
+          const list = mapB.get(key) ?? [];
+          list.push(r);
+          mapB.set(key, list);
+        }
+
+        const matchedB = new Set<LedgerRow>();
+        for (const a of rowsA) {
+          const key = Math.abs(a.amountSigned);
+          const list = mapB.get(key);
+          if (list && list.length > 0) {
+            const b = list.shift()!; // 1つだけ消費
+            matchedB.add(b);
+            // Aも消費 → 除外（何もしない）
+          } else {
+            unmatchedA.push(a);
+            unmatchCountA++;
+          }
+        }
+
+        // マッチしなかったBを残りとして追加
+        for (const b of rowsB) {
+          if (!matchedB.has(b)) {
+            unmatchedB.push(b);
+            unmatchCountB++;
+          }
+        }
+      }
+    }
+
+    // 片方もなければ既存どおり単独ファイルを返却
+    if (unmatchedA.length === 0 && unmatchedB.length === 0) {
+      return {
+        ok: true,
+        files: [
+          {
+            name: filename,
+            mime: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            base64,
+          },
+        ],
+      };
+    }
+
+    // アンマッチファイルを生成
+    const wbU = new ExcelJS.Workbook();
+    const wsU = wbU.addWorksheet("unmatched");
+    const headerU = [
+      ...LEDGER_HEADER.map((h) => `A:${h.name}`),
+      ...LEDGER_HEADER.map((h) => `B:${h.name}`),
+    ];
+    wsU.addRow(headerU);
+
+    // Aの未一致行 → 左にA、右は空
+    for (const a of unmatchedA) {
+      const row: (string | number | null)[] = [];
+      row.push(...a.cells);
+      row.push(...Array(LEDGER_HEADER.length).fill(""));
+      wsU.addRow(row);
+    }
+    // Bの未一致行 → 左は空、右にB
+    for (const b of unmatchedB) {
+      const row: (string | number | null)[] = [];
+      row.push(...Array(LEDGER_HEADER.length).fill(""));
+      row.push(...b.cells);
+      wsU.addRow(row);
+    }
+
+    const abU = (await wbU.xlsx.writeBuffer()) as ArrayBuffer;
+    const base64U = Buffer.from(abU).toString("base64");
+    const filenameU = `ledger-unmatch_${period}_${branchA}-${branchB}.xlsx`;
+
     return {
       ok: true,
-      file: { name: filename, mime: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", base64 },
+      files: [
+        {
+          name: filename,
+          mime: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          base64,
+        },
+        {
+          name: filenameU,
+          mime: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          base64: base64U,
+        },
+      ],
+      meta: {
+        hasUnmatch: true,
+        diffDays: diffDays.length,
+        unmatchCountA,
+        unmatchCountB,
+      },
     };
   } catch (e: unknown) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) };
