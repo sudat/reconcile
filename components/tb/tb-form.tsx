@@ -15,7 +15,16 @@ import { useActionState, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { maskBranchName } from "@/lib/mask";
 
-type Row = { leftBranch: string; rightBranch: string; leftAmount: number; rightAmount: number; diff: number; leftBranchName: string; rightBranchName: string; period: string };
+type Row = {
+  leftBranch: string;
+  rightBranch: string;
+  leftAmount: number;
+  rightAmount: number;
+  diff: number;
+  leftBranchName: string;
+  rightBranchName: string;
+  period: string;
+};
 type TBState = { ok: boolean; error?: string | null; results?: Row[] | null };
 type Props = {
   // useActionState で直接サーバーアクションを受け取る（prevState, formData）
@@ -31,13 +40,12 @@ export default function TbForm({ onSubmit }: Props) {
   return (
     <div className="w-full space-y-6">
       <div className="space-y-4">
-        <h2 className="text-base font-medium">本支店勘定の照合（TB）</h2>
         <form
           action={(fd) => {
             setHidden(false);
             return formAction(fd);
           }}
-          className="space-y-4"
+          className="space-y-4 mt-4"
         >
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div className="space-y-2">
@@ -77,7 +85,11 @@ export default function TbForm({ onSubmit }: Props) {
             </Button>
           </div>
           <div className="flex items-center gap-3 pt-1">
-            <Switch id="aggregateBranches" name="aggregateBranches" defaultChecked />
+            <Switch
+              id="aggregateBranches"
+              name="aggregateBranches"
+              defaultChecked
+            />
             <Label htmlFor="aggregateBranches">店を集約</Label>
           </div>
         </form>
@@ -102,7 +114,9 @@ export default function TbForm({ onSubmit }: Props) {
             <TableBody>
               {state.results.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={5}>一致しないペアはありませんでした。</TableCell>
+                  <TableCell colSpan={5}>
+                    一致しないペアはありませんでした。
+                  </TableCell>
                 </TableRow>
               ) : (
                 state.results.map((r: Row, i: number) => (

@@ -4,11 +4,13 @@ import type { ReactNode } from "react";
 
 export function Collapsible({
   open,
-  duration = 240,
+  duration = 300,
+  easing = "ease-in-out",
   children,
 }: {
   open: boolean;
   duration?: number;
+  easing?: string;
   children: ReactNode;
 }) {
   return (
@@ -17,7 +19,7 @@ export function Collapsible({
       className="grid overflow-hidden"
       style={{
         gridTemplateRows: open ? "1fr" : "0fr",
-        transition: `grid-template-rows ${duration}ms ease, opacity ${duration}ms ease`,
+        transition: `grid-template-rows ${duration}ms ${easing}, opacity ${duration}ms ${easing}`,
         opacity: open ? 1 : 0,
       }}
     >
@@ -25,4 +27,3 @@ export function Collapsible({
     </div>
   );
 }
-

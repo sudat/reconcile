@@ -6,7 +6,8 @@ import { ReconcileTabs } from "@/components/reconcile/reconcile-tabs";
 
 export default function ReconcilePage() {
   return (
-    <main className="container mx-auto p-6 font-normal max-w-7xl">
+    <main className="container mx-auto font-normal max-w-7xl">
+      <div className="text-2xl font-bold mb-4  pb-2">照合</div>
       <ReconcileTabs
         tb={<TbForm onSubmit={tbReconcileAction} />}
         gl={<LedgerForm onSubmit={ledgerReconcileAction} />}

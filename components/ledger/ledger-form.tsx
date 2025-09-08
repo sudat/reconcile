@@ -14,7 +14,17 @@ type Props = {
     form: FormData
   ) => Promise<
     | { ok: false; error?: string }
-    | { ok: true; files: DownloadFile[]; meta?: { hasUnmatch?: boolean; diffDays?: number; unmatchCountA?: number; unmatchCountB?: number }; analysis?: unknown }
+    | {
+        ok: true;
+        files: DownloadFile[];
+        meta?: {
+          hasUnmatch?: boolean;
+          diffDays?: number;
+          unmatchCountA?: number;
+          unmatchCountB?: number;
+        };
+        analysis?: unknown;
+      }
   >;
 };
 
@@ -85,7 +95,7 @@ export default function LedgerForm({ onSubmit }: Props) {
       pushLog("[2/4] サーバで照合処理を実行中...");
       const res = await onSubmit(fd);
       if (!res || res.ok === false) {
-        const errorMsg = (res && 'error' in res) ? res.error : undefined;
+        const errorMsg = res && "error" in res ? res.error : undefined;
         setError(errorMsg ?? "エラーが発生しました");
         pushLog(`  └ エラー: ${errorMsg ?? "不明なエラー"}`);
         return;
@@ -131,7 +141,9 @@ export default function LedgerForm({ onSubmit }: Props) {
             setTimeout(() => URL.revokeObjectURL(url2), 5000);
           }
           pushLog(
-            `  └ アンマッチファイルをダウンロードしました (${res.meta?.unmatchCountA ?? 0}件(A) / ${res.meta?.unmatchCountB ?? 0}件(B))`
+            `  └ アンマッチファイルをダウンロードしました (${
+              res.meta?.unmatchCountA ?? 0
+            }件(A) / ${res.meta?.unmatchCountB ?? 0}件(B))`
           );
 
           // アンマッチがある場合はAI分析をバックグラウンド開始
@@ -181,8 +193,7 @@ export default function LedgerForm({ onSubmit }: Props) {
   return (
     <div className="w-full space-y-6">
       <div className="space-y-4">
-        <h2 className="text-base font-medium">本支店勘定の照合（元帳A/B）</h2>
-        <form action={handleAction} className="space-y-4">
+        <form action={handleAction} className="space-y-4 mt-4">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div className="space-y-2">
               <Label htmlFor="period-ledger">対象期間 (YYYY-MM)</Label>
@@ -218,7 +229,13 @@ export default function LedgerForm({ onSubmit }: Props) {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="ledgerA">支店Aの元帳（XLSX, 1ファイル）</Label>
-                <Input id="ledgerA" name="ledgerA" type="file" accept=".xlsx" required />
+                <Input
+                  id="ledgerA"
+                  name="ledgerA"
+                  type="file"
+                  accept=".xlsx"
+                  required
+                />
               </div>
             </div>
             <div className="space-y-3">
@@ -242,7 +259,13 @@ export default function LedgerForm({ onSubmit }: Props) {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="ledgerB">支店Bの元帳（XLSX, 1ファイル）</Label>
-                <Input id="ledgerB" name="ledgerB" type="file" accept=".xlsx" required />
+                <Input
+                  id="ledgerB"
+                  name="ledgerB"
+                  type="file"
+                  accept=".xlsx"
+                  required
+                />
               </div>
             </div>
           </div>
@@ -289,20 +312,28 @@ export default function LedgerForm({ onSubmit }: Props) {
           )}
           {(aiLoading || aiSummary || aiError) && (
             <div className="mt-3 rounded-md border bg-muted/40 p-3 text-sm space-y-2">
-              <div className="text-xs font-medium text-muted-foreground">AI分析</div>
+              <div className="text-xs font-medium text-muted-foreground">
+                AI分析
+              </div>
               {aiLoading && (
                 <div className="inline-flex items-center gap-2 text-sm">
                   <Loader2 className="animate-spin" /> AI分析中…
                 </div>
               )}
-              {aiError && <div className="text-destructive text-sm">{aiError}</div>}
+              {aiError && (
+                <div className="text-destructive text-sm">{aiError}</div>
+              )}
               {aiSummary && (
-                <pre className="whitespace-pre-wrap text-xs leading-5">{aiSummary}</pre>
+                <pre className="whitespace-pre-wrap text-xs leading-5">
+                  {aiSummary}
+                </pre>
               )}
             </div>
           )}
           {lastFile && (
-            <p className="text-sm text-muted-foreground">出力ファイルをダウンロードしました: {lastFile}</p>
+            <p className="text-sm text-muted-foreground">
+              出力ファイルをダウンロードしました: {lastFile}
+            </p>
           )}
           {error && <p className="text-sm text-destructive">{error}</p>}
         </form>

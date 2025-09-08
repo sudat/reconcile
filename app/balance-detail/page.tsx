@@ -58,7 +58,8 @@ export default function BalanceDetailPage() {
   // 将来: shownYm に応じてサーバから当該月度データを取得（YAGNIで現状はダミー）
 
   return (
-    <main className="container mx-auto p-6 font-normal max-w-7xl">
+    <main className="container mx-auto font-normal max-w-7xl">
+      <div className="text-2xl font-bold mb-4  pb-2">残高明細</div>
       <HeaderBar
         yearMonth={yearMonth}
         onYearMonthChange={setYearMonth}
@@ -242,47 +243,44 @@ export default function BalanceDetailPage() {
                       {formatJPY(projectBalance)}
                     </TableCell>
                   </TableRow>
-                  {isOpen && (
-                    <>
-                      {p.entries.map((e) => {
-                        const entryTone =
-                          e.month === "prev" ? "bg-muted/20" : "";
-                        return (
-                          <TableRow key={e.id} className={entryTone}>
-                            {/* 取引先コード / 取引先 / 摘要 */}
-                            <TableCell className="whitespace-nowrap">
-                              {e.partnerCode}
-                            </TableCell>
-                            <TableCell>
-                              <span className="truncate block max-w-[28ch]">
-                                {e.partnerName}
-                              </span>
-                            </TableCell>
-                            <TableCell className="text-muted-foreground">
-                              <span className="truncate block max-w-[48ch]">
-                                {e.memo}
-                              </span>
-                            </TableCell>
-                            {/* 計上日 / 伝票番号 */}
-                            <TableCell className="whitespace-nowrap tabular-nums min-w-[10ch]">
-                              {formatDateJP(e.date)}
-                            </TableCell>
-                            <TableCell className="whitespace-nowrap">
-                              {e.voucherNo}
-                            </TableCell>
-                            <TableCell className="text-right tabular-nums">
-                              {formatJPY(e.debit)}
-                            </TableCell>
-                            <TableCell className="text-right tabular-nums">
-                              {formatJPY(e.credit)}
-                            </TableCell>
-                            {/* 残高は明細では非表示 */}
-                            <TableCell />
-                          </TableRow>
-                        );
-                      })}
-                    </>
-                  )}
+                  {/* 明細: 同一テーブル内に直接描画（列幅を完全に共有） */}
+                  {isOpen &&
+                    p.entries.map((e) => {
+                      const entryTone = e.month === "prev" ? "bg-muted/20" : "";
+                      return (
+                        <TableRow key={e.id} className={entryTone}>
+                          {/* 取引先コード / 取引先 / 摘要 */}
+                          <TableCell className="whitespace-nowrap">
+                            {e.partnerCode}
+                          </TableCell>
+                          <TableCell>
+                            <span className="truncate block max-w-[28ch]">
+                              {e.partnerName}
+                            </span>
+                          </TableCell>
+                          <TableCell className="text-muted-foreground">
+                            <span className="truncate block max-w-[48ch]">
+                              {e.memo}
+                            </span>
+                          </TableCell>
+                          {/* 計上日 / 伝票番号 */}
+                          <TableCell className="whitespace-nowrap tabular-nums min-w-[10ch]">
+                            {formatDateJP(e.date)}
+                          </TableCell>
+                          <TableCell className="whitespace-nowrap">
+                            {e.voucherNo}
+                          </TableCell>
+                          <TableCell className="text-right tabular-nums">
+                            {formatJPY(e.debit)}
+                          </TableCell>
+                          <TableCell className="text-right tabular-nums">
+                            {formatJPY(e.credit)}
+                          </TableCell>
+                          {/* 残高は明細では非表示 */}
+                          <TableCell />
+                        </TableRow>
+                      );
+                    })}
                 </Fragment>
               );
             })}
