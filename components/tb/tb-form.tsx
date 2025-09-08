@@ -1,6 +1,5 @@
 "use client";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -30,126 +29,112 @@ export default function TbForm({ onSubmit }: Props) {
   const [hidden, setHidden] = useState(false);
 
   return (
-    <div className="mx-auto max-w-4xl w-full space-y-6">
-      <Card>
-        <CardHeader className="font-normal">
-          <CardTitle>本支店勘定の照合（TB）</CardTitle>
-        </CardHeader>
-        <CardContent className="font-normal">
-          <form
-            action={(fd) => {
-              setHidden(false);
-              return formAction(fd);
-            }}
-            className="space-y-4"
-          >
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="period">対象期間 (YYYY-MM)</Label>
-                <Input
-                  id="period"
-                  name="period"
-                  type="month"
-                  required
-                  defaultValue={new Date().toISOString().slice(0, 7)}
-                />
-              </div>
-              <div className="space-y-2 sm:col-span-2">
-                <Label htmlFor="tb">試算表ファイル（XLSX, 1ファイル）</Label>
-                <Input id="tb" name="tb" type="file" accept=".xlsx" required />
-              </div>
-            </div>
-            <div className="flex gap-3">
-              <Button type="submit" disabled={pending} aria-busy={pending}>
-                {pending ? (
-                  <>
-                    <Loader2 className="animate-spin" />
-                    照合中...
-                  </>
-                ) : (
-                  "照合を実行"
-                )}
-              </Button>
-              <Button
-                type="reset"
-                variant="outline"
-                onClick={() => {
-                  setHidden(true);
-                }}
-              >
-                クリア
-              </Button>
-            </div>
-            <div className="flex items-center gap-3 pt-1">
-              <Switch
-                id="aggregateBranches"
-                name="aggregateBranches"
-                defaultChecked
+    <div className="w-full space-y-6">
+      <div className="space-y-4">
+        <h2 className="text-base font-medium">本支店勘定の照合（TB）</h2>
+        <form
+          action={(fd) => {
+            setHidden(false);
+            return formAction(fd);
+          }}
+          className="space-y-4"
+        >
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="period">対象期間 (YYYY-MM)</Label>
+              <Input
+                id="period"
+                name="period"
+                type="month"
+                required
+                defaultValue={new Date().toISOString().slice(0, 7)}
               />
-              <Label htmlFor="aggregateBranches">店を集約</Label>
             </div>
-          </form>
-          {!hidden && state?.error && (
-            <p className="mt-4 text-sm text-destructive">{state.error}</p>
-          )}
-        </CardContent>
-      </Card>
+            <div className="space-y-2 sm:col-span-2">
+              <Label htmlFor="tb">試算表ファイル（XLSX, 1ファイル）</Label>
+              <Input id="tb" name="tb" type="file" accept=".xlsx" required />
+            </div>
+          </div>
+          <div className="flex gap-3">
+            <Button type="submit" disabled={pending} aria-busy={pending}>
+              {pending ? (
+                <>
+                  <Loader2 className="animate-spin" />
+                  照合中...
+                </>
+              ) : (
+                "照合を実行"
+              )}
+            </Button>
+            <Button
+              type="reset"
+              variant="outline"
+              onClick={() => {
+                setHidden(true);
+              }}
+            >
+              クリア
+            </Button>
+          </div>
+          <div className="flex items-center gap-3 pt-1">
+            <Switch id="aggregateBranches" name="aggregateBranches" defaultChecked />
+            <Label htmlFor="aggregateBranches">店を集約</Label>
+          </div>
+        </form>
+        {!hidden && state?.error && (
+          <p className="text-sm text-destructive">{state.error}</p>
+        )}
+      </div>
 
       {!hidden && Array.isArray(state?.results) && (
-        <Card>
-          <CardHeader className="font-normal">
-            <CardTitle>照合結果（ペア別）</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Table className="font-normal">
-              <TableHeader>
+        <div className="space-y-3">
+          <h3 className="text-sm font-medium">照合結果（ペア別）</h3>
+          <Table className="font-normal">
+            <TableHeader>
+              <TableRow>
+                <TableHead>支店A</TableHead>
+                <TableHead>支店B</TableHead>
+                <TableHead className="text-right">A→B 期末残高</TableHead>
+                <TableHead className="text-right">B→A 期末残高</TableHead>
+                <TableHead className="text-right">差額（A+B）</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {state.results.length === 0 ? (
                 <TableRow>
-                  <TableHead>支店A</TableHead>
-                  <TableHead>支店B</TableHead>
-                  <TableHead className="text-right">A→B 期末残高</TableHead>
-                  <TableHead className="text-right">B→A 期末残高</TableHead>
-                  <TableHead className="text-right">差額（A+B）</TableHead>
+                  <TableCell colSpan={5}>一致しないペアはありませんでした。</TableCell>
                 </TableRow>
-              </TableHeader>
-              <TableBody>
-                {state.results.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={5}>
-                      一致しないペアはありませんでした。
+              ) : (
+                state.results.map((r: Row, i: number) => (
+                  <TableRow
+                    key={i}
+                    className={
+                      Math.abs(r.diff) > 0
+                        ? "bg-amber-50 dark:bg-amber-900/20"
+                        : ""
+                    }
+                  >
+                    <TableCell>
+                      {maskBranchName(r.leftBranchName)} ({r.leftBranch})
+                    </TableCell>
+                    <TableCell>
+                      {maskBranchName(r.rightBranchName)} ({r.rightBranch})
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {r.leftAmount.toLocaleString()}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {r.rightAmount.toLocaleString()}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums font-normal">
+                      {r.diff.toLocaleString()}
                     </TableCell>
                   </TableRow>
-                ) : (
-                  state.results.map((r: Row, i: number) => (
-                    <TableRow
-                      key={i}
-                      className={
-                        Math.abs(r.diff) > 0
-                          ? "bg-amber-50 dark:bg-amber-900/20"
-                          : ""
-                      }
-                    >
-                      <TableCell>
-                        {maskBranchName(r.leftBranchName)} ({r.leftBranch})
-                      </TableCell>
-                      <TableCell>
-                        {maskBranchName(r.rightBranchName)} ({r.rightBranch})
-                      </TableCell>
-                      <TableCell className="text-right tabular-nums">
-                        {r.leftAmount.toLocaleString()}
-                      </TableCell>
-                      <TableCell className="text-right tabular-nums">
-                        {r.rightAmount.toLocaleString()}
-                      </TableCell>
-                      <TableCell className="text-right tabular-nums font-normal">
-                        {r.diff.toLocaleString()}
-                      </TableCell>
-                    </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </div>
       )}
     </div>
   );

@@ -4,7 +4,6 @@ import { useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { BRANCHES } from "@/constants/masterdata/master-data";
 import { maskBranchName } from "@/lib/mask";
 import { Loader2 } from "lucide-react";
@@ -180,156 +179,134 @@ export default function LedgerForm({ onSubmit }: Props) {
   }
 
   return (
-    <div className="mx-auto max-w-4xl w-full space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle>本支店勘定の照合（元帳A/B）</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <form action={handleAction} className="space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+    <div className="w-full space-y-6">
+      <div className="space-y-4">
+        <h2 className="text-base font-medium">本支店勘定の照合（元帳A/B）</h2>
+        <form action={handleAction} className="space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="period-ledger">対象期間 (YYYY-MM)</Label>
+              <Input
+                id="period-ledger"
+                name="period"
+                type="month"
+                required
+                defaultValue={new Date().toISOString().slice(0, 7)}
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+            <div className="space-y-3">
               <div className="space-y-2">
-                <Label htmlFor="period-ledger">対象期間 (YYYY-MM)</Label>
-                <Input
-                  id="period-ledger"
-                  name="period"
-                  type="month"
+                <Label htmlFor="branchA">支店A</Label>
+                <select
+                  id="branchA"
+                  name="branchA"
                   required
-                  defaultValue={new Date().toISOString().slice(0, 7)}
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-              <div className="space-y-3">
-                <div className="space-y-2">
-                  <Label htmlFor="branchA">支店A</Label>
-                  <select
-                    id="branchA"
-                    name="branchA"
-                    required
-                    className="h-9 w-full rounded-md border bg-transparent px-3 text-sm"
-                  >
-                    <option value="" disabled>
-                      選択してください
+                  className="h-9 w-full rounded-md border bg-transparent px-3 text-sm"
+                >
+                  <option value="" disabled>
+                    選択してください
+                  </option>
+                  {BRANCHES.map((b) => (
+                    <option key={b.code} value={b.code}>
+                      {maskBranchName(b.name)} ({b.code})
                     </option>
-                    {BRANCHES.map((b) => (
-                      <option key={b.code} value={b.code}>
-                        {maskBranchName(b.name)} ({b.code})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="ledgerA">
-                    支店Aの元帳（XLSX, 1ファイル）
-                  </Label>
-                  <Input
-                    id="ledgerA"
-                    name="ledgerA"
-                    type="file"
-                    accept=".xlsx"
-                    required
-                  />
-                </div>
+                  ))}
+                </select>
               </div>
-              <div className="space-y-3">
-                <div className="space-y-2">
-                  <Label htmlFor="branchB">支店B</Label>
-                  <select
-                    id="branchB"
-                    name="branchB"
-                    required
-                    className="h-9 w-full rounded-md border bg-transparent px-3 text-sm"
-                  >
-                    <option value="" disabled>
-                      選択してください
+              <div className="space-y-2">
+                <Label htmlFor="ledgerA">支店Aの元帳（XLSX, 1ファイル）</Label>
+                <Input id="ledgerA" name="ledgerA" type="file" accept=".xlsx" required />
+              </div>
+            </div>
+            <div className="space-y-3">
+              <div className="space-y-2">
+                <Label htmlFor="branchB">支店B</Label>
+                <select
+                  id="branchB"
+                  name="branchB"
+                  required
+                  className="h-9 w-full rounded-md border bg-transparent px-3 text-sm"
+                >
+                  <option value="" disabled>
+                    選択してください
+                  </option>
+                  {BRANCHES.map((b) => (
+                    <option key={b.code} value={b.code}>
+                      {maskBranchName(b.name)} ({b.code})
                     </option>
-                    {BRANCHES.map((b) => (
-                      <option key={b.code} value={b.code}>
-                        {maskBranchName(b.name)} ({b.code})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="ledgerB">
-                    支店Bの元帳（XLSX, 1ファイル）
-                  </Label>
-                  <Input
-                    id="ledgerB"
-                    name="ledgerB"
-                    type="file"
-                    accept=".xlsx"
-                    required
-                  />
-                </div>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="ledgerB">支店Bの元帳（XLSX, 1ファイル）</Label>
+                <Input id="ledgerB" name="ledgerB" type="file" accept=".xlsx" required />
               </div>
             </div>
+          </div>
 
-            <div className="flex gap-3">
-              <Button type="submit" disabled={loading} aria-busy={loading}>
-                {loading ? (
-                  <>
-                    <Loader2 className="animate-spin" />
-                    照合中...
-                  </>
-                ) : (
-                  "照合を実行"
-                )}
-              </Button>
-              <Button
-                type="reset"
-                variant="outline"
-                onClick={() => {
-                  setError(null);
-                  setLastFile(null);
-                  setLogs([]);
-                  aiReqRef.current++; // 進行中のAIを無効化
-                  setAiLoading(false);
-                  setAiSummary(null);
-                  setAiError(null);
-                }}
-              >
-                クリア
-              </Button>
-              <a ref={downloadRef} className="hidden" aria-hidden />
+          <div className="flex gap-3">
+            <Button type="submit" disabled={loading} aria-busy={loading}>
+              {loading ? (
+                <>
+                  <Loader2 className="animate-spin" />
+                  照合中...
+                </>
+              ) : (
+                "照合を実行"
+              )}
+            </Button>
+            <Button
+              type="reset"
+              variant="outline"
+              onClick={() => {
+                setError(null);
+                setLastFile(null);
+                setLogs([]);
+                aiReqRef.current++; // 進行中のAIを無効化
+                setAiLoading(false);
+                setAiSummary(null);
+                setAiError(null);
+              }}
+            >
+              クリア
+            </Button>
+            <a ref={downloadRef} className="hidden" aria-hidden />
+          </div>
+
+          {logs.length > 0 && (
+            <div
+              className="mt-3 rounded-md border bg-muted/40 p-3 text-xs font-mono text-muted-foreground max-h-40 overflow-auto"
+              role="log"
+              aria-live="polite"
+            >
+              {logs.map((l, i) => (
+                <div key={i}>{l}</div>
+              ))}
             </div>
-            {/* 実行ボタン下のリアルタイムログ */}
-            {logs.length > 0 && (
-              <div
-                className="mt-3 rounded-md border bg-muted/40 p-3 text-xs font-mono text-muted-foreground max-h-40 overflow-auto"
-                role="log"
-                aria-live="polite"
-              >
-                {logs.map((l, i) => (
-                  <div key={i}>{l}</div>
-                ))}
-              </div>
-            )}
-            {(aiLoading || aiSummary || aiError) && (
-              <div className="mt-3 rounded-md border bg-muted/40 p-3 text-sm space-y-2">
-                <div className="text-xs font-medium text-muted-foreground">AI分析</div>
-                {aiLoading && (
-                  <div className="inline-flex items-center gap-2 text-sm">
-                    <Loader2 className="animate-spin" /> AI分析中…
-                  </div>
-                )}
-                {aiError && <div className="text-destructive text-sm">{aiError}</div>}
-                {aiSummary && (
-                  <pre className="whitespace-pre-wrap text-xs leading-5">{aiSummary}</pre>
-                )}
-              </div>
-            )}
-            {lastFile && (
-              <p className="text-sm text-muted-foreground">
-                出力ファイルをダウンロードしました: {lastFile}
-              </p>
-            )}
-            {error && <p className="text-sm text-destructive">{error}</p>}
-          </form>
-        </CardContent>
-      </Card>
+          )}
+          {(aiLoading || aiSummary || aiError) && (
+            <div className="mt-3 rounded-md border bg-muted/40 p-3 text-sm space-y-2">
+              <div className="text-xs font-medium text-muted-foreground">AI分析</div>
+              {aiLoading && (
+                <div className="inline-flex items-center gap-2 text-sm">
+                  <Loader2 className="animate-spin" /> AI分析中…
+                </div>
+              )}
+              {aiError && <div className="text-destructive text-sm">{aiError}</div>}
+              {aiSummary && (
+                <pre className="whitespace-pre-wrap text-xs leading-5">{aiSummary}</pre>
+              )}
+            </div>
+          )}
+          {lastFile && (
+            <p className="text-sm text-muted-foreground">出力ファイルをダウンロードしました: {lastFile}</p>
+          )}
+          {error && <p className="text-sm text-destructive">{error}</p>}
+        </form>
+      </div>
     </div>
   );
 }

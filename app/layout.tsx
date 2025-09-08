@@ -2,6 +2,9 @@ import type { Metadata } from "next";
 import { Noto_Sans_JP } from "next/font/google";
 import clsx from "clsx";
 import "./globals.css";
+import { SidebarProvider } from "@/components/ui/sidebar";
+import { SidebarInset } from "@/components/ui/sidebar";
+import AppSidebar from "@/components/common/app-sidebar";
 
 const notoSansJP = Noto_Sans_JP({
   subsets: ["latin"],
@@ -23,7 +26,10 @@ export default function RootLayout({
         suppressHydrationWarning
         className={clsx(notoSansJP.variable, "font-sans", "font-normal")}
       >
-        {children}
+        <SidebarProvider>
+          <AppSidebar variant="inset" />
+          <SidebarInset className="p-8">{children}</SidebarInset>
+        </SidebarProvider>
       </body>
     </html>
   );
