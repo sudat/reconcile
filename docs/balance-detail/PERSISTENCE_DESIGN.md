@@ -18,7 +18,7 @@
 - スコープ: `(dept_code, subject_code, ym)` の組。UIの一画面に相当。
 - データセット（Dataset）: スコープ単位の入出力・分類の管理単位。
 - 案件（Project）: 仕訳を束ねるユーザー定義のグループ。
-- 仕訳（Entry）: Excelの明細行（前月繰越行含む）。
+- 仕訳（Entry）: Excelの明細行。繰越行は読み飛ばし（本画面では不使用）。
 - 洗替: 同一スコープ・同一YMの再アップロードで仕訳を差し替え。分類は可能な限り継承。
 
 Neon: PostgreSQL 15系想定。Prisma: 5.x想定（multi‑schema対応）。
@@ -41,12 +41,10 @@ Neon: PostgreSQL 15系想定。Prisma: 5.x想定（multi‑schema対応）。
     - 正規化規則: 全角空白→半角、連続空白圧縮、トリム、NULL→空文字、日付はISO化。
     - 一意制約: `(dataset_id, row_key)`
   - 既存`entry`で今回アップロードに存在しない`row_key`は `soft_deleted_at` にタイムスタンプ設定（論理削除）。
-- Step3 繰越の反映:
-  - 繰越行は `is_carry_over = true` として保持。UI用 `carry_over_display` は計算 or オーバーライド許容。
-- Step4 分類継承（洗替）:
+- Step3 分類継承（洗替）:
   - 取り込んだ各 `entry` について、従前の同 `row_key` の `project_entry` があれば再リンク（`project_id`は同一`dataset`内のもの）。
   - マッチしない行は未分類（`project_entry`無）とする。
-- Step5 完了:
+- Step4 完了:
   - `dataset` を `status = ready` に更新。`entry_count` を更新。
 
 エラーハンドリング: ファイル構造エラーは `import_job.status = failed` とし、`dataset.status` は変更しない。
@@ -59,8 +57,7 @@ Neon: PostgreSQL 15系想定。Prisma: 5.x想定（multi‑schema対応）。
 - 当月 `project` と `project_entry → entry(current)` を取得。
 - 前月 `dataset` を同スコープで検索（存在すれば）し、`project` と `entry(prev)` を取得。
 - 画面用 `Dataset` に変換:
-  - carryOver: 前月の月末残高（集計）または繰越行金額。優先順位: データセットの `carry_over_override` → 前月集計値。
-  - `Project[]`: 前月のみの案件は `entries.month = "prev"` のみで構成。両月に跨るものは別々の `Project` として並列表示（YAGNI）し、UIでトーン差を付与。
+  - `Project[]`: 前月のみの案件は `entries.month = "prev"` のみで構成。両月に跨るものは別々の `Project` として並列表示（YAGNI）し、UIでトーン差を付与。繰越は扱わない。
 
 性能: 1万件/30秒以内（PRD）。`entry` はYM+スコープで分割されるため1クエリの対象は数千件規模を想定。適切な複合INDEXで対応。
 
@@ -76,7 +73,7 @@ Neon: PostgreSQL 15系想定。Prisma: 5.x想定（multi‑schema対応）。
 
 ### 2.4 Excel出力（F004）
 
-- クエリは表示系と同じ集計を使用。carryOver → 案件別 → 当月累計の順で整形。
+- クエリは表示系と同じ集計を使用。案件別 → 当月累計の順で整形（当月のみ）。
 
 ---
 
@@ -103,7 +100,6 @@ ImportJob 1 ──* Entry
 | subject_code | text | 科目コード（UIマスタと一致） |
 | ym | text | `YYYY-MM` |
 | status | text | `processing`/`ready`/`failed` |
-| carry_over_override | bigint? | UIで手動補正する場合（任意） |
 | entry_count | int | 当月有効エントリ件数（論理削除除外） |
 | finalized_at | timestamptz? | 前月確定など将来拡張用（YAGNIで未使用） |
 | created_at / updated_at | timestamptz | |
@@ -128,7 +124,8 @@ ImportJob 1 ──* Entry
 Index: `INDEX(dataset_id, created_at DESC)`
 
 ### 3.3 entry
-- 役割: 仕訳明細（前月繰越行含む）。洗替対応のためUPSERT＋論理削除。
+- 役割: 仕訳明細。洗替対応のためUPSERT＋論理削除。
+ - 備考: 繰越行は取り込み時にスキップするため格納しない。
 
 | 列 | 型 | 説明 |
 |---|---|---|
@@ -143,14 +140,12 @@ Index: `INDEX(dataset_id, created_at DESC)`
 | debit | bigint | 金額（円, 借方） |
 | credit | bigint | 金額（円, 貸方） |
 | balance | bigint | Excel由来の残高（任意） |
-| is_carry_over | boolean | 繰越行フラグ |
 | soft_deleted_at | timestamptz? | 洗替で消えた行のマーキング |
 | import_job_id | uuid FK(import_job.id) | 最終更新元 |
 | created_at / updated_at | timestamptz |
 
 制約/Index:
 - `UNIQUE (dataset_id, row_key)`
-- `INDEX (dataset_id, is_carry_over)`
 - `INDEX (dataset_id, soft_deleted_at)`
 - `INDEX (dataset_id, date, voucher_no)`
 
@@ -211,7 +206,6 @@ model Dataset {
   subjectCode         String
   ym                  String
   status              String
-  carryOverOverride   BigInt?
   entryCount          Int      @default(0)
   finalizedAt         DateTime?
   createdAt           DateTime @default(now())
@@ -260,7 +254,6 @@ model Entry {
   projectLink    ProjectEntry?
 
   @@unique([datasetId, rowKey])
-  @@index([datasetId, isCarryOver])
   @@index([datasetId, softDeletedAt])
   @@index([datasetId, date, voucherNo])
   @@schema("Reconcile")
@@ -305,12 +298,9 @@ model ProjectEntry {
 ## 5. クエリ設計（表示・出力）
 
 - 当月取得:
-  - `dataset` → `project(非削除 order_no昇順)` → `project_entry` → `entry(soft_deleted_at IS NULL)`
-- 前月取得:
-  - 当月 `ym` の前月を算出し、同スコープの `dataset` を検索。存在時のみ同様に取得。
-- carryOver の算出:
-  - 優先: `dataset.carry_over_override` があればそれ。
-  - なければ前月 `entry` のうち `is_carry_over = true` の金額、または前月集計の最終残高（要件に合わせて選択。MVPは繰越行優先）。
+  - `dataset` → `project(非削除 order_no昇順)` → `project_entry` → `entry(soft_deleted_at IS NULL)`（当月のみ）
+- 前月取得（任意・参照用途）:
+  - 当月 `ym` の前月を算出し、同スコープの `dataset` を検索。存在時のみ同様に取得し、UI上はトーン差で区別。繰越は算出しない。
 - 表示データ変換:
   - `Entry.month = "current" | "prev"` を付与してUIへ返却（DB列には持たない=DRY）。
 
@@ -406,7 +396,6 @@ model ProjectEntry {
 - 前月統合: 前月のみの案件が灰色トーンで表示される（UI要件）
 - 並び順: 案件の並べ替えが保持される
 - 割当: エントリのD&D移動後に再取得しても割当が反映される
-- carryOver: 前月繰越が正しく表示される（繰越行 or 集計）
 - 出力: 画面と同じ順序・集計でExcel出力される
 
 ---
@@ -414,6 +403,5 @@ model ProjectEntry {
 ## 15. オープン事項
 
 - 指紋キーの構成要素の最終確定（列の揺れに対する頑健性）
-- carryOverの定義（繰越行 vs 前月末残）を運用で一本化
+- 当月累計とTBのBS残高の一致条件の明文化（算出基準の合意）
 - multi‑schema運用（Prismaのバージョン固定/検証）
-
