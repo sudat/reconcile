@@ -12,6 +12,7 @@ type Props = {
   onShow: () => void;
   onUploadFile: (file: File, ym: string) => void;
   uploading?: boolean;
+  statusText?: string | null;
 };
 
 export function HeaderBar({
@@ -20,6 +21,7 @@ export function HeaderBar({
   onShow,
   onUploadFile,
   uploading = false,
+  statusText = null,
 }: Props) {
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -69,6 +71,11 @@ export function HeaderBar({
             "Excelアップロード"
           )}
         </Button>
+        {statusText && (
+          <div className="ml-3 text-xs text-muted-foreground" aria-live="polite">
+            {statusText}
+          </div>
+        )}
       </div>
 
       <Button variant="outline" disabled>

@@ -35,6 +35,7 @@ Neon: PostgreSQL 15系想定。Prisma: 5.x想定（multi‑schema対応）。Exc
   - `dataset` をスコープ＋YMで `UPSERT`（未存在なら作成）。状態 `status = processing`。
   - 本ファイルには複数スコープが含まれるため、Excelの各行を `(dept_code, subject_code)` 単位にグルーピング。
   - 各グループ（=スコープ）ごとに `import_job` を作成（ファイル名・サイズ・ハッシュは同一）。
+  - Neonのコールドスタート対策として、取り込み前に `SELECT 1` を指数バックオフでリトライ（最大12秒）。
 - Step2 Excel → 正規化:
   - 取込対象シート/列をバリデーション。月計行など非対象は除外。
   - 各行から `row_key` を生成して `entry` に `UPSERT`。対象は選択YMの行のみ（`date` が `YYYY-MM` で始まる）。
@@ -47,6 +48,7 @@ Neon: PostgreSQL 15系想定。Prisma: 5.x想定（multi‑schema対応）。Exc
   - マッチしない行は未分類（`project_entry`無）とする。
 - Step4 完了:
   - `dataset` を `status = ready` に更新。`entry_count` を更新。
+  - プロジェクト自動生成: 当該 `dataset` に有効プロジェクトが1件もない場合、初回のみ「取引先×摘要」に基づく案件を自動作成（Heuristic + GPT補助）。
 
 エラーハンドリング: ファイル構造エラーは各グループの `import_job.status = failed` とし、当該 `dataset.status` は `processing` のままにし、後続の再取込で復旧可能とする。
 
@@ -55,7 +57,7 @@ Neon: PostgreSQL 15系想定。Prisma: 5.x想定（multi‑schema対応）。Exc
 入力: UIから `dept, subject, ym` が指定され「表示」。
 
 - 当月 `dataset` を取得（`status = ready`）。
-- 当月 `project` と `project_entry → entry(current)` を取得。
+- 当月 `project` と `project_entry → entry(current)` を取得。未作成の場合は初回表示時に自動生成を実行。
 - 前月 `dataset` を同スコープで検索（存在すれば）し、`project` と `entry(prev)` を取得。
 - 画面用 `Dataset` に変換:
   - `Project[]`: 前月のみの案件は `entries.month = "prev"` のみで構成。両月に跨るものは別々の `Project` として並列表示（YAGNI）し、UIでトーン差を付与。繰越は扱わない。
@@ -332,6 +334,15 @@ model ProjectEntry {
 
 ---
 
+## 7.1 案件自動分類（初回）
+
+- 方針: 取引先×摘要で案件を識別。まず正規表現のヒューリスティックで分類（例: 電気料/水道料/ガス料/クレジット手数料/振替/戻り）。
+- 補完: ヒューリスティックで未判別の摘要は、OpenAI `gpt-4o-mini` で短いラベルに統合。1スコープ1回のJSONマッピングで実施（トークン節約）。
+- 生成: `project(order_no=絶対額降順)` を作成し、`project_entry` を一括作成。未割当は「未分類」。
+- 再実行: 既にプロジェクトが存在する場合は自動生成は行わない（forceオプションで再実行可）。
+
+---
+
 ## 8. インデックス/性能
 
 - `entry(dataset_id, row_key)` UNIQUE で高速UPSERT。
@@ -355,6 +366,29 @@ model ProjectEntry {
 
 - 取り込み毎に `import_job` を記録。
 - 分類変更は `project_entry` の更新のみ（監査は最小限）。将来は履歴テーブルを追加（YAGNI）。
+- 実行ログ: `log/terminal.log` に Terminal 同等のログをファイル保存。
+  - Console の `log/info/warn/error/debug` を `instrumentation.ts` でラップしミラーリング。
+  - Prisma: `log: { emit: 'event', level: 'query'|'warn'|'error' }` を利用し、`lib/prisma.ts` で `prisma.$on(...)` により追記。
+  - ワークフロー（アップロード/自動グルーピング等）は `lib/logger.ts#logWorkflow` を利用し、`log/<workflowId>_terminal.log` へ出力。グローバルにもミラー。
+  - エラーは `console.error` と `logWorkflow(..., 'error ...')` の双方で記録。
+  - 表示形式: `[ISO時刻][xxxxxxxx...] メッセージ`（2番目はワークフローID先頭8桁）。
+  - 日本語化された主なメッセージ:
+    - `Excel受信開始: 月度=..., サイズ=...B`
+    - `取り込み開始/取り込み完了: 部門=..., 科目=..., 行数=...`
+    - `自動グループ化開始/完了: ...`
+    - `取引先処理完了: 取引先=名称(コード), グループ数=...`
+    - `自動グループ化 進捗: a/b (X%) 部門=..., 科目=...`
+
+### 10.2 進捗ポーリング
+- `lib/progress.ts` にプロセス内の進捗ストア（`Map<workflowId, {done,total}>`）を実装。
+- `app/actions/progress.ts#getProgressAction` で進捗を返却。
+- クライアントは `app/balance-detail/page.tsx` から1秒間隔でポーリングし、ヘッダーのステータス文言に `[処理中 X%] a/b` を表示。
+
+### 10.1 OpenAI Observability（Traces）
+- トップレベル: `app/actions/upload-and-group.ts#uploadAndGroupAllAction` が `YYYY/MM/DD HH:MM:SS ファイルアップロード` というタイトルで `withTrace()` を開始（`withWorkflowTrace` 経由）。
+ - スコープ: `scope <dept>-<subject>` を Custom Span として作成。
+ - 応答: スコープごとに1回の `client.responses.create()` を実行し、`withResponseSpan()` で `response_id` をSpanに紐づける。
+ - 並列方針: 並列はスコープ単位（`upload-and-group.ts` の `PROCESSING.maxParallelScopes`）。取引先は配列で1リクエストにまとめる。
 
 ---
 

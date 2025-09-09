@@ -165,7 +165,12 @@ export function ProjectsTable({
                           data-no-row-toggle
                           autoFocus
                           value={editing.name}
-                          onChange={(e) => setEditing((s) => (s ? { ...s, name: (e.currentTarget as HTMLInputElement).value } : s))}
+                          // Reactのイベントはタイミングにより currentTarget が null になることがあるため
+                          // 先に値を退避してから setState へ渡す（KISS/DRY）。
+                          onChange={(e) => {
+                            const value = (e.currentTarget as HTMLInputElement).value;
+                            setEditing((s) => (s ? { ...s, name: value } : s));
+                          }}
                           onBlur={() => {
                             if (!editing) return;
                             onEditProjectName(p.id, editing.name || p.name);
@@ -322,4 +327,3 @@ export function ProjectsTable({
     </>
   );
 }
-

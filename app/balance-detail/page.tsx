@@ -7,11 +7,17 @@ import { HeaderBar } from "@/components/balance-detail/header-bar";
 import { TabRow } from "@/components/balance-detail/tab-row";
 import { ExpandAllToggle } from "@/components/balance-detail/expand-all-toggle";
 import type { Dataset, Entry, Project } from "@/types/balance-detail";
-import raw from "./sample-data.json";
 import { Button } from "@/components/ui/button";
 import { ProjectsTable } from "@/components/balance-detail/projects-table";
-import { importBalanceDatasetAction } from "@/app/actions/balance-upload";
+// import { importBalanceDatasetAction } from "@/app/actions/balance-upload"; // moved into uploadAndGroupAllAction
 import { toast } from "sonner";
+import { getBalanceDetailAction } from "@/app/actions/balance-get";
+// まとめ取得に切替
+import { getBalanceAllAction } from "@/app/actions/balance-get-all";
+// import { ensureAutoGrouping } from "@/app/actions/project-autogroup"; // orchestrated on server
+import { uploadAndGroupAllAction } from "@/app/actions/upload-and-group";
+import { getProgressAction } from "@/app/actions/progress";
+import { PROCESSING } from "@/constants/processing";
 
 const AUTO_SHOW_LATEST = false; // 初期表示: 最新自動 or 表示待ち（要件検討点）
 
@@ -32,23 +38,29 @@ export default function BalanceDetailPage() {
   const [yearMonth, setYearMonth] = useState<string>(currentYm());
   const [shownYm, setShownYm] = useState<string | null>(AUTO_SHOW_LATEST ? currentYm() : null);
   const [uploading, setUploading] = useState(false);
+  const [statusText, setStatusText] = useState<string | null>(null);
 
-  const data = raw as Dataset;
-  const hasMatch = dept.code === data.deptCode && subject.code === data.subjectCode;
+  const [data, setData] = useState<Dataset | null>(null);
+  const [allStore, setAllStore] = useState<
+    | null
+    | {
+        ym: string;
+        scopes: { datasetId: string; deptCode: string; subjectCode: string }[];
+        projects: { id: string; datasetId: string; name: string; orderNo: number }[];
+        links: { projectId: string; entryId: string }[];
+        entries: Entry[] & { datasetId?: string }[];
+      }
+  >(null);
+  const hasMatch = !!data && dept.code === data.deptCode && subject.code === data.subjectCode;
 
   // 画面内編集用に案件配列をstate管理（D&Dや編集、削除に対応）
   const [projects, setProjects] = useState<Project[]>([]);
 
   useEffect(() => {
-    if (shownYm && hasMatch) {
-      // データセットから浅いコピーを生成（state直接変更を避ける / KISS）
-      setProjects((data.projects ?? []).map((p) => ({ ...p, entries: [...p.entries] })));
-    } else {
-      setProjects([]);
-    }
+    if (!shownYm || !data || !hasMatch) return setProjects([]);
+    setProjects((data.projects ?? []).map((p) => ({ ...p, entries: [...p.entries] })));
     // 展開状態はリセットしない（ユーザ操作優先）
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [shownYm, hasMatch]);
+  }, [shownYm, data, hasMatch]);
 
   // 一括トグルの状態
   const projectIds = projects.map((p) => p.id);
@@ -123,6 +135,43 @@ export default function BalanceDetailPage() {
     });
   };
 
+  // 単一ペイロードから現在の部門・科目のDatasetに整形
+  function buildDatasetFromAll(
+    all: NonNullable<typeof allStore>,
+    ym0: string,
+    deptCode0: string,
+    subjectCode0: string
+  ): Dataset | null {
+    const scope = all.scopes.find((s) => s.deptCode === deptCode0 && s.subjectCode === subjectCode0);
+    if (!scope) return null;
+    const dsId = scope.datasetId;
+    const projsRaw = all.projects.filter((p) => p.datasetId === dsId).sort((a, b) => a.orderNo - b.orderNo);
+    const links = all.links.filter((l) => projsRaw.some((p) => p.id === l.projectId));
+    const linkedByEntry = new Map<string, string>();
+    for (const l of links) linkedByEntry.set(l.entryId, l.projectId);
+    const entries = all.entries.filter((e: any) => (e as any).datasetId === dsId);
+
+    const projs = projsRaw.map((p) => ({ id: p.id, name: p.name, total: 0, entries: [] as Entry[] }));
+    const byId = new Map(projs.map((p) => [p.id, p] as const));
+    const unassigned: Entry[] = [];
+    for (const e of entries) {
+      const pid = linkedByEntry.get(e.id);
+      const entry: Entry = { ...e, month: "current" } as Entry;
+      if (pid && byId.has(pid)) byId.get(pid)!.entries.push(entry);
+      else unassigned.push(entry);
+    }
+    if (unassigned.length > 0) projs.push({ id: "unclassified", name: "未分類", entries: unassigned, total: 0 });
+    for (const p of projs) p.total = p.entries.reduce((s, x) => s + (x.debit - x.credit), 0);
+    return {
+      deptCode: deptCode0,
+      deptName: departments.find((d) => d.code === deptCode0)?.name ?? deptCode0,
+      subjectCode: subjectCode0,
+      subjectName: subjects.find((s) => s.code === subjectCode0)?.name ?? subjectCode0,
+      carryOver: 0,
+      projects: projs,
+    } satisfies Dataset;
+  }
+
   // 永続化（ダミー）
   const handlePersist = () => {
     console.info(
@@ -140,11 +189,33 @@ export default function BalanceDetailPage() {
       <HeaderBar
         yearMonth={yearMonth}
         onYearMonthChange={setYearMonth}
-        onShow={() => setShownYm(yearMonth)}
+        onShow={async () => {
+          setShownYm(yearMonth);
+          try {
+            const fdAll = new FormData();
+            fdAll.set("ym", yearMonth);
+            fdAll.set("autogroup", "true");
+            const all = await getBalanceAllAction(fdAll);
+            if (!all || all.ok === false) {
+              toast.warning((all as any)?.error ?? "データが見つかりません");
+              setData(null);
+              setAllStore(null);
+              return;
+            }
+            setAllStore(all as any);
+            const ds = buildDatasetFromAll(all as any, yearMonth, dept.code, subject.code);
+            setData(ds);
+          } catch (e) {
+            console.error(e);
+            toast.error("表示データの取得に失敗しました");
+          }
+        }}
         uploading={uploading}
+        statusText={statusText}
         onUploadFile={async (file, ym) => {
           if (!file) return;
           setUploading(true);
+          setStatusText("[処理準備中...]");
           try {
             const { upload } = await import("@vercel/blob/client");
             // 1) Blob へアップロード
@@ -153,29 +224,70 @@ export default function BalanceDetailPage() {
               handleUploadUrl: "/api/blob/upload",
               multipart: true,
             });
-            // 2) Server Action でDBへ永続化
+            // 2) Server Action でDB永続化＋AI分類（サーバ側でトップレベルトレース開始）
             const fd = new FormData();
             fd.set("ym", ym);
             fd.set("fileUrl", up.url);
             fd.set("fileName", file.name);
             fd.set("fileSize", String(file.size));
-            const res = await importBalanceDatasetAction(fd);
+            // workflow id を生成してサーバへ渡す（ログ/トレースのひも付け）
+            const workflowId = crypto.randomUUID();
+            fd.set("workflowId", workflowId);
+
+            // 進捗ポーリング（1秒間隔）を開始
+            let timer: number | null = null;
+            try {
+              timer = window.setInterval(async () => {
+                try {
+                  const pf = new FormData();
+                  pf.set("workflowId", workflowId);
+                  const p = await getProgressAction(pf);
+                  if (p && p.ok && p.progress) {
+                    const { done, total, percent } = p.progress as { done: number; total: number; percent: number };
+                    if (total > 0) {
+                      setStatusText(`[処理中 ${Math.round(percent)}%] ${done}/${total}`);
+                    } else {
+                      setStatusText(`[処理中...]`);
+                    }
+                  }
+                } catch {}
+              }, 1000) as unknown as number;
+            } catch {}
+            const res = await uploadAndGroupAllAction(fd);
             if (!res || res.ok === false) {
               console.error(res?.error || "アップロード処理に失敗しました");
-              alert(res?.error || "アップロード処理に失敗しました");
+              toast.error(res?.error || "アップロード処理に失敗しました");
               return;
             }
             console.info(
-              "[persist] ym=%s imported groups=%d",
+              "[persist+group] ym=%s imported groups=%d",
               ym,
-              (res as any)?.totalGroups ?? 0
+              (res as Record<string, unknown>)?.totalGroups as number ?? 0
             );
-            toast.success("Excelファイルのアップロードが完了しました");
-            // 必要であれば即座に表示へ切替（当面は手動「表示」）
+            toast.success("取り込みとAI分類が完了しました");
+            setStatusText(`[AI分類が完了しました]`);
+            // アップロード後: 単一リクエストで全件取得して即時反映
+            try {
+              const fdAll = new FormData();
+              fdAll.set("ym", ym);
+              // 取り込み時に全スコープをAI分類済みなので autogroup=false
+              fdAll.set("autogroup", "false");
+              const all = await getBalanceAllAction(fdAll);
+              if (all && all.ok) {
+                setAllStore(all as any);
+                const ds = buildDatasetFromAll(all as any, ym, dept.code, subject.code);
+                setData(ds);
+              }
+            } catch {}
+            setShownYm(ym);
           } catch (e) {
             console.error(e);
-            alert("アップロードに失敗しました");
+            toast.error("アップロードに失敗しました");
           } finally {
+            // ポーリング停止
+            try { if (timer != null) window.clearInterval(timer); } catch {}
+            // ステータスは少しだけ残してから消す
+            setTimeout(() => setStatusText(null), 4000);
             setUploading(false);
           }
         }}
@@ -234,6 +346,13 @@ export default function BalanceDetailPage() {
         onCreateProjectWithEntry={createProjectWithEntry}
         onDeleteProject={deleteProject}
       />
+
+      {/* タブ切替時に全件ペイロードから再構成（クライアント内で完結） */}
+      {useEffect(() => {
+        if (!shownYm || !allStore) return;
+        const ds = buildDatasetFromAll(allStore, shownYm, dept.code, subject.code);
+        setData(ds);
+      }, [shownYm, dept.code, subject.code, allStore])}
     </main>
   );
 }
