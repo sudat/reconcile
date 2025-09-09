@@ -4,6 +4,7 @@ import { useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Loader2 } from "lucide-react";
 
 type Props = {
   yearMonth: string; // "YYYY-MM"
@@ -58,8 +59,15 @@ export function HeaderBar({
             fileRef.current?.click();
           }}
           disabled={uploading}
+          aria-busy={uploading}
         >
-          {uploading ? "アップロード中..." : "アップロード"}
+          {uploading ? (
+            <span className="inline-flex items-center gap-2">
+              <Loader2 className="h-4 w-4 animate-spin" /> アップロード中...
+            </span>
+          ) : (
+            "Excelアップロード"
+          )}
         </Button>
       </div>
 

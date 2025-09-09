@@ -1,10 +1,10 @@
-# /balance-detail 永続化設計（Prisma + Neon/PostgreSQL, schema: "Reconcile"）
+# /balance-detail 永続化設計（Prisma + Neon/PostgreSQL, schema: "reconcile"）
 
 本ドキュメントは、勘定科目別残高明細（/balance-detail）に関する永続化処理とデータベース設計（Neon/PostgreSQL + Prisma ORM）を定義する。
 
 - 適用範囲: MVP Phase1（PRD: F001, F002, F003, F004, F005, F006）
 - 非対象: F007（AI推定）、F008（案件名統一マスタ）詳細実装
-- 実装前提: Prisma（multi‑schema対応）、DBスキーマ名は `Reconcile`
+- 実装前提: Prisma（multi‑schema対応）、DBスキーマ名は `reconcile`
 - 設計方針: YAGNI / DRY / KISS に準拠
   - YAGNI: マスタ類（部門・科目）は当面DBに持たず`code`のみ保持（UIは既存constants参照）。
   - DRY: 前月実績は「複製保存せず」月度横断クエリで結合して表示。
@@ -21,7 +21,7 @@
 - 仕訳（Entry）: Excelの明細行。繰越行は読み飛ばし（本画面では不使用）。
 - 洗替: 同一スコープ・同一YMの再アップロードで仕訳を差し替え。分類は可能な限り継承。
 
-Neon: PostgreSQL 15系想定。Prisma: 5.x想定（multi‑schema対応）。
+Neon: PostgreSQL 15系想定。Prisma: 5.x想定（multi‑schema対応）。Excelファイル本体はVercel Blobを使用。
 
 ---
 
@@ -29,14 +29,15 @@ Neon: PostgreSQL 15系想定。Prisma: 5.x想定（multi‑schema対応）。
 
 ### 2.1 アップロード（F001, F005 洗替）
 
-入力: ユーザーがヘッダから対象年月を選択後、Excelをアップロード。
+入力: ユーザーがヘッダから対象年月のみを選択後、全社分(全部門×全科目)のExcelを1ファイルでアップロード。
 
 - Step1 取り込み開始:
   - `dataset` をスコープ＋YMで `UPSERT`（未存在なら作成）。状態 `status = processing`。
-  - `import_job` を作成（ファイル名・サイズ・ハッシュを記録）。
+  - 本ファイルには複数スコープが含まれるため、Excelの各行を `(dept_code, subject_code)` 単位にグルーピング。
+  - 各グループ（=スコープ）ごとに `import_job` を作成（ファイル名・サイズ・ハッシュは同一）。
 - Step2 Excel → 正規化:
   - 取込対象シート/列をバリデーション。月計行など非対象は除外。
-  - 各行から `row_key` を生成して `entry` に `UPSERT`。
+  - 各行から `row_key` を生成して `entry` に `UPSERT`。対象は選択YMの行のみ（`date` が `YYYY-MM` で始まる）。
     - `row_key = sha256(normalize(date, voucher_no, partner_code, memo, debit, credit))`
     - 正規化規則: 全角空白→半角、連続空白圧縮、トリム、NULL→空文字、日付はISO化。
     - 一意制約: `(dataset_id, row_key)`
@@ -47,7 +48,7 @@ Neon: PostgreSQL 15系想定。Prisma: 5.x想定（multi‑schema対応）。
 - Step4 完了:
   - `dataset` を `status = ready` に更新。`entry_count` を更新。
 
-エラーハンドリング: ファイル構造エラーは `import_job.status = failed` とし、`dataset.status` は変更しない。
+エラーハンドリング: ファイル構造エラーは各グループの `import_job.status = failed` とし、当該 `dataset.status` は `processing` のままにし、後続の再取込で復旧可能とする。
 
 ### 2.2 表示（F002 前月統合）
 
@@ -189,7 +190,7 @@ datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
   // Prisma 5.x multi‑schema を利用（必要に応じて schemas を宣言）
-  schemas  = ["Reconcile"]
+  schemas  = ["reconcile"]
 }
 
 generator client {
@@ -216,7 +217,7 @@ model Dataset {
 
   @@unique([deptCode, subjectCode, ym])
   @@index([ym, deptCode, subjectCode])
-  @@schema("Reconcile")
+  @@schema("reconcile")
 }
 
 model ImportJob {
@@ -231,7 +232,7 @@ model ImportJob {
 
   entries    Entry[]
   @@index([datasetId, createdAt])
-  @@schema("Reconcile")
+  @@schema("reconcile")
 }
 
 model Entry {
@@ -256,7 +257,7 @@ model Entry {
   @@unique([datasetId, rowKey])
   @@index([datasetId, softDeletedAt])
   @@index([datasetId, date, voucherNo])
-  @@schema("Reconcile")
+  @@schema("reconcile")
 }
 
 model Project {
@@ -271,7 +272,7 @@ model Project {
   updatedAt  DateTime @updatedAt
 
   @@index([datasetId, isDeleted, orderNo])
-  @@schema("Reconcile")
+  @@schema("reconcile")
 }
 
 model ProjectEntry {
@@ -290,8 +291,8 @@ model ProjectEntry {
 
 注意:
 - BigIntで金額（円）を扱い、浮動小数誤差を排除。
-- モデル毎に `@@schema("Reconcile")` を付与（Neonのpublicと分離）。
-- multi‑schema利用が難しい場合はDB接続の `search_path=Reconcile,public` で代替可能（将来移行可）。
+- モデル毎に `@@schema("reconcile")` を付与（Neonのpublicと分離）。
+ - multi‑schema利用が難しい場合はDB接続の `search_path=reconcile,public` で代替可能（将来移行可）。
 
 ---
 
@@ -344,7 +345,7 @@ model ProjectEntry {
 
 - 初期化手順（想定）:
   1) Prismaに `schemas = ["Reconcile"]` を設定。
-  2) `prisma migrate dev` で `Reconcile` スキーマと各テーブルを生成。
+  2) `prisma migrate dev` で `reconcile` スキーマと各テーブルを生成。
   3) 接続文字列に `options=...&statement_timeout=...` を適宜設定（Neon）。
 - 既存データなし想定。Rollbackは `prisma migrate reset`（開発環境）。
 

@@ -10,6 +10,8 @@ import type { Dataset, Entry, Project } from "@/types/balance-detail";
 import raw from "./sample-data.json";
 import { Button } from "@/components/ui/button";
 import { ProjectsTable } from "@/components/balance-detail/projects-table";
+import { importBalanceDatasetAction } from "@/app/actions/balance-upload";
+import { toast } from "sonner";
 
 const AUTO_SHOW_LATEST = false; // 初期表示: 最新自動 or 表示待ち（要件検討点）
 
@@ -29,6 +31,7 @@ export default function BalanceDetailPage() {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [yearMonth, setYearMonth] = useState<string>(currentYm());
   const [shownYm, setShownYm] = useState<string | null>(AUTO_SHOW_LATEST ? currentYm() : null);
+  const [uploading, setUploading] = useState(false);
 
   const data = raw as Dataset;
   const hasMatch = dept.code === data.deptCode && subject.code === data.subjectCode;
@@ -138,8 +141,43 @@ export default function BalanceDetailPage() {
         yearMonth={yearMonth}
         onYearMonthChange={setYearMonth}
         onShow={() => setShownYm(yearMonth)}
-        onUploadFile={(file, ym) => {
-          console.info("[upload] ym=%s file=%s", ym, file?.name);
+        uploading={uploading}
+        onUploadFile={async (file, ym) => {
+          if (!file) return;
+          setUploading(true);
+          try {
+            const { upload } = await import("@vercel/blob/client");
+            // 1) Blob へアップロード
+            const up = await upload(file.name, file, {
+              access: "public",
+              handleUploadUrl: "/api/blob/upload",
+              multipart: true,
+            });
+            // 2) Server Action でDBへ永続化
+            const fd = new FormData();
+            fd.set("ym", ym);
+            fd.set("fileUrl", up.url);
+            fd.set("fileName", file.name);
+            fd.set("fileSize", String(file.size));
+            const res = await importBalanceDatasetAction(fd);
+            if (!res || res.ok === false) {
+              console.error(res?.error || "アップロード処理に失敗しました");
+              alert(res?.error || "アップロード処理に失敗しました");
+              return;
+            }
+            console.info(
+              "[persist] ym=%s imported groups=%d",
+              ym,
+              (res as any)?.totalGroups ?? 0
+            );
+            toast.success("Excelファイルのアップロードが完了しました");
+            // 必要であれば即座に表示へ切替（当面は手動「表示」）
+          } catch (e) {
+            console.error(e);
+            alert("アップロードに失敗しました");
+          } finally {
+            setUploading(false);
+          }
         }}
       />
       <div className="h-4" />
@@ -199,4 +237,3 @@ export default function BalanceDetailPage() {
     </main>
   );
 }
-

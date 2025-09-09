@@ -5,6 +5,7 @@ import "./globals.css";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { SidebarInset } from "@/components/ui/sidebar";
 import AppSidebar from "@/components/common/app-sidebar";
+import { Toaster } from "@/components/ui/sonner";
 
 const notoSansJP = Noto_Sans_JP({
   subsets: ["latin"],
@@ -30,6 +31,7 @@ export default function RootLayout({
           <AppSidebar variant="inset" />
           <SidebarInset className="p-8">{children}</SidebarInset>
         </SidebarProvider>
+        <Toaster position="bottom-right" closeButton />
       </body>
     </html>
   );

@@ -1,0 +1,102 @@
+// Prisma schema for balance-detail persistence
+// schema: reconcile (lowercase per user request)
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  // Multi-schema: ensure Prisma generates under the reconcile schema
+  schemas  = ["reconcile"]
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Dataset {
+  id          String   @id @default(uuid())
+  deptCode    String
+  subjectCode String
+  ym          String   // YYYY-MM
+  status      String   // processing | ready | failed
+  entryCount  Int      @default(0)
+  finalizedAt DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  projects   Project[]
+  entries    Entry[]
+  importJobs ImportJob[]
+
+  @@unique([deptCode, subjectCode, ym])
+  @@index([ym, deptCode, subjectCode])
+  @@schema("reconcile")
+}
+
+model ImportJob {
+  id        String   @id @default(uuid())
+  datasetId String
+  dataset   Dataset  @relation(fields: [datasetId], references: [id])
+  fileName  String
+  fileSize  Int
+  fileHash  String
+  status    String   // processing | succeeded | failed
+  createdAt DateTime @default(now())
+
+  entries Entry[]
+
+  @@index([datasetId, createdAt])
+  @@schema("reconcile")
+}
+
+model Entry {
+  id            String    @id @default(uuid())
+  datasetId     String
+  dataset       Dataset   @relation(fields: [datasetId], references: [id])
+  rowKey        String
+  date          DateTime
+  voucherNo     String
+  partnerCode   String
+  partnerName   String
+  memo          String
+  debit         BigInt    @default(0)
+  credit        BigInt    @default(0)
+  balance       BigInt    @default(0)
+  softDeletedAt DateTime?
+  importJobId   String?
+  importJob     ImportJob? @relation(fields: [importJobId], references: [id])
+  projectLink   ProjectEntry?
+
+  @@unique([datasetId, rowKey])
+  @@index([datasetId, softDeletedAt])
+  @@index([datasetId, date, voucherNo])
+  @@schema("reconcile")
+}
+
+model Project {
+  id         String   @id @default(uuid())
+  datasetId  String
+  dataset    Dataset  @relation(fields: [datasetId], references: [id])
+  name       String
+  orderNo    Int      @default(0)
+  isDeleted  Boolean  @default(false)
+  entries    ProjectEntry[]
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([datasetId, isDeleted, orderNo])
+  @@schema("reconcile")
+}
+
+model ProjectEntry {
+  projectId String
+  entryId   String @unique
+  linkedAt  DateTime @default(now())
+
+  project Project @relation(fields: [projectId], references: [id])
+  entry   Entry   @relation(fields: [entryId], references: [id])
+
+  @@id([projectId, entryId])
+  @@index([projectId])
+  @@schema("reconcile")
+}
+
