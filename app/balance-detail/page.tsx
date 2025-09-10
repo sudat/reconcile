@@ -330,19 +330,29 @@ export default function BalanceDetailPage() {
                       total: number;
                       percent: number;
                     };
+                    // デバッグ用ログ
+                    console.log(`[Progress] done=${done}, total=${total}, percent=${percent}`);
+                    
+                    // total=0の場合も含めて適切に表示
                     if (total > 0) {
                       setStatusText(
                         `[処理中 ${Math.round(percent)}%] ${done}/${total}`
                       );
+                    } else if (done === 0 && total === 0) {
+                      // 進捗データがまだ初期化されていない状態
+                      setStatusText(`[処理準備中...]`);
                     } else {
                       setStatusText(`[処理中...]`);
                     }
                   }
-                } catch {}
+                } catch (e) {
+                  console.warn(`[Progress Error]`, e);
+                }
               }, 1000) as unknown as number;
             };
             
-            startPolling();
+            // Server Action開始前に少し遅延してポーリング開始（進捗初期化を待つ）
+            setTimeout(startPolling, 1000);
             const res = await uploadAndGroupAllAction(fd);
             if (!res || res.ok === false) {
               console.error(res?.error || "アップロード処理に失敗しました");
