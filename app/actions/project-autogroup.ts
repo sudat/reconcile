@@ -121,6 +121,7 @@ export async function ensureAutoGrouping(
     }));
 
     // スコープ単位で1回のAI呼び出し（取引先配列を入力）
+    // プロンプトの内容は以下を参照：
     const partnerResults = await withSpan(
       { name: "autogroup", metadata: { ym, deptCode, subjectCode } },
       async () => {
@@ -132,7 +133,7 @@ export async function ensureAutoGrouping(
         const abstr = Math.max(0, Math.min(1, AI_GROUPING.abstraction));
         const guide =
           abstr >= 0.8
-            ? `可能な限り一般名詞へ統一（例: "電気代"/"水道代"/"ガス代"/"クレジット手数料"/"振替"/"返金" など）。半年間や1年間使い続けられる簡潔な名称が良い。逆に月/期間/回数/枝番等の枝葉末節の情報は不要。例：月=8月度、期間=8/1~8/15、回数=3回目などが不要。`
+            ? `可能な限り一般名詞へ統一（例: "電気代"/"水道代"/"ガス代"/"クレジット手数料"/"振替"/"返金" など）。\n\n(point.1)半年間や1年間使い続けられる簡潔な名称が良い。逆に月/期間/回数/枝番等の枝葉末節の情報は不要。\n\n不要情報の事例：8月度⇒月度情報は具体過ぎる、8/1~8/15⇒期間情報は具体過ぎる、3回目⇒回数情報は具体過ぎる。\n\n(point.2)簡潔で分かりやすい表現が良い。逆に冗長な表現は不要。冗長な表現とは"関連","合計"だとか曖昧な言葉を指します。例えば電気料金関連費用という必要はない。電気料金だけで良い。\n\n事例毎に冗長表現・簡潔表現の例をならべる：クレジットカード関連の手数料 ⇒ クレジットカード手数料、各種決済手数料関連費用 ⇒ 各種決済手数料、	電気料金の支払い費用。⇒ 電気料金。`
             : abstr >= 0.5
             ? `月/期間/回数/枝番などの補助情報は省略し、要点語を残す（例: "電気代", "水道代", "クレジット手数料(セゾン)"）。`
             : `摘要の表現をできるだけ保持しつつ、末尾のノイズ（全角括弧の注記など）は省略。`;
@@ -146,7 +147,7 @@ export async function ensureAutoGrouping(
 
         const prompt = `あなたは会計データのアシスタントです。次の部門×勘定科目の取引先ごとの摘要リストを、案件名（短いラベル）に統合してください。\n- グループ化方針（抽象化強度=${abstr.toFixed(
           2
-        )}）: ${guide}\n- ラベルは10〜30文字程度の日本語。括弧は最小限に使用。\n- 出力は必ず JSON 配列のみ。スキーマ: [{\"partnerCode\":\"...\",\"items\":[{\"memo\":\"...\",\"label\":\"...\"}]}]\n- JSON以外の文字は出力しない\n対象スコープ: 部門=${deptCode}, 科目=${subjectCode}\n取引先配列(JSON):\n${JSON.stringify(
+        )}）: ${guide}\n- ラベルは10〜18文字程度の日本語。括弧は最小限に使用。\n- 出力は必ず JSON 配列のみ。スキーマ: [{\"partnerCode\":\"...\",\"items\":[{\"memo\":\"...\",\"label\":\"...\"}]}]\n- JSON以外の文字は出力しない\n対象スコープ: 部門=${deptCode}, 科目=${subjectCode}\n取引先配列(JSON):\n${JSON.stringify(
           payload,
           null,
           2
@@ -158,7 +159,7 @@ export async function ensureAutoGrouping(
               client.responses.create({
                 model: AI_GROUPING.model,
                 input: prompt,
-                // temperature: 0.1,
+                temperature: 0.1,
                 metadata: {
                   workflowId,
                   type: "autogroup",

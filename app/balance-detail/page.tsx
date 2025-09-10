@@ -194,7 +194,7 @@ export default function BalanceDetailPage() {
           try {
             const fdAll = new FormData();
             fdAll.set("ym", yearMonth);
-            fdAll.set("autogroup", "true");
+            fdAll.set("autogroup", "false"); // 表示時は自動グルーピングを無効化
             const all = await getBalanceAllAction(fdAll);
             if (!all || all.ok === false) {
               toast.warning((all as any)?.error ?? "データが見つかりません");
