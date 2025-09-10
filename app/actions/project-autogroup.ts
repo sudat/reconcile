@@ -11,6 +11,47 @@ import {
 } from "@/lib/tracing";
 import { logWorkflow } from "@/lib/logger";
 
+// 構造化出力用の型定義
+type AutoGroupingResult = {
+  partnerCode: string;
+  items: Array<{
+    memo: string;
+    label: string;
+  }>;
+};
+
+// JSONスキーマ定義
+const AUTO_GROUPING_SCHEMA = {
+  type: "object",
+  properties: {
+    results: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          partnerCode: { type: "string" },
+          items: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                memo: { type: "string" },
+                label: { type: "string" }
+              },
+              required: ["memo", "label"],
+              additionalProperties: false
+            }
+          }
+        },
+        required: ["partnerCode", "items"],
+        additionalProperties: false
+      }
+    }
+  },
+  required: ["results"],
+  additionalProperties: false
+} as const;
+
 function n(x: bigint | number | null | undefined): number {
   if (x == null) return 0;
   return Number(x);
@@ -65,11 +106,7 @@ export async function ensureAutoGrouping(
   });
   if (!ds) return { ok: false, error: "該当データセットが存在しません" };
 
-  const existingCount = await prisma.project.count({
-    where: { datasetId: ds.id, isDeleted: false },
-  });
-  if (existingCount > 0 && !force)
-    return { ok: true, result: { created: 0, projects: [] } };
+  // 洗い替え方式：既存Projectの有無に関わらず常にAI分類を実行
 
   const entries = await prisma.entry.findMany({
     where: { datasetId: ds.id, softDeletedAt: null },
@@ -145,61 +182,150 @@ export async function ensureAutoGrouping(
           memos: p.memos, // トークン余裕前提で全件投入
         }));
 
-        const prompt = `あなたは会計データのアシスタントです。次の部門×勘定科目の取引先ごとの摘要リストを、案件名（短いラベル）に統合してください。\n- グループ化方針（抽象化強度=${abstr.toFixed(
-          2
-        )}）: ${guide}\n- ラベルは10〜18文字程度の日本語。括弧は最小限に使用。\n- 出力は必ず JSON 配列のみ。スキーマ: [{\"partnerCode\":\"...\",\"items\":[{\"memo\":\"...\",\"label\":\"...\"}]}]\n- JSON以外の文字は出力しない\n対象スコープ: 部門=${deptCode}, 科目=${subjectCode}\n取引先配列(JSON):\n${JSON.stringify(
-          payload,
-          null,
-          2
-        )}`;
+        const systemPrompt = `あなたは会計データのアシスタントです。次の部門×勘定科目の取引先ごとの摘要リストを、案件名（短いラベル）に統合してください。
+
+グループ化方針（抽象化強度=${abstr.toFixed(2)}）: ${guide}
+
+ルール:
+- ラベルは10〜18文字程度の日本語
+- 括弧は最小限に使用
+- 対象スコープ: 部門=${deptCode}, 科目=${subjectCode}`;
+
+        const userPrompt = `取引先配列:\n${JSON.stringify(payload, null, 2)}`;
 
         try {
-          const r = await withResponseTracing(
+          // 構造化出力対応のAPI呼び出し
+          const response = await withResponseTracing(
             () =>
-              client.responses.create({
-                model: AI_GROUPING.model,
-                input: prompt,
+              client.chat.completions.create({
+                model: AI_GROUPING.model || "gpt-4o-mini",
+                messages: [
+                  {
+                    role: "system",
+                    content: systemPrompt,
+                  },
+                  {
+                    role: "user", 
+                    content: userPrompt,
+                  },
+                ],
                 temperature: 0.1,
-                metadata: {
-                  workflowId,
-                  type: "autogroup",
-                  ym,
-                  deptCode,
-                  subjectCode,
+                response_format: {
+                  type: "json_schema",
+                  json_schema: {
+                    name: "autogroup_result",
+                    schema: AUTO_GROUPING_SCHEMA,
+                    strict: true,
+                  },
                 },
               }),
             { input: payload, attachResponse: true }
           );
 
-          const textRaw = (r.output_text ?? "").trim();
-          const text = (() => {
-            const fence = textRaw.match(/```(?:json)?\n([\s\S]*?)```/i);
-            if (fence) return fence[1];
-            const i = textRaw.indexOf("[");
-            const j = textRaw.lastIndexOf("]");
-            if (i >= 0 && j > i) return textRaw.slice(i, j + 1);
-            return textRaw;
-          })();
+          // refusal チェック
+          if (response.choices[0]?.message.refusal) {
+            throw new Error(`API request was refused: ${response.choices[0].message.refusal}`);
+          }
 
-          const arr: {
-            partnerCode: string;
-            items: { memo: string; label: string }[];
-          }[] = JSON.parse(text);
+          // 構造化出力からJSONを取得
+          const content = response.choices[0]?.message.content;
+          if (!content) {
+            throw new Error("構造化された応答の取得に失敗しました");
+          }
 
-          // 各取引先のローカルグループを構築
+          let parsed: { results: AutoGroupingResult[] };
+          try {
+            parsed = JSON.parse(content);
+          } catch (parseError) {
+            throw new Error(`JSON解析エラー: ${parseError}`);
+          }
+
+          if (!parsed?.results || !Array.isArray(parsed.results)) {
+            throw new Error("期待された構造の応答が得られませんでした");
+          }
+
+          // データ検証を強化
+          const arr: AutoGroupingResult[] = [];
+          for (const result of parsed.results) {
+            // 基本的な構造チェック
+            if (!result.partnerCode || typeof result.partnerCode !== 'string') {
+              logWorkflow(workflowId, `警告: 無効なpartnerCode: ${JSON.stringify(result)}`);
+              continue;
+            }
+            
+            if (!result.items || !Array.isArray(result.items)) {
+              logWorkflow(workflowId, `警告: 無効なitems構造: ${result.partnerCode}`);
+              continue;
+            }
+            
+            // items の検証とクリーニング
+            const validItems = [];
+            for (const item of result.items) {
+              if (item.memo && item.label && 
+                  typeof item.memo === 'string' && 
+                  typeof item.label === 'string' &&
+                  item.memo.trim().length > 0 &&
+                  item.label.trim().length > 0) {
+                validItems.push({
+                  memo: item.memo.trim(),
+                  label: item.label.trim()
+                });
+              } else {
+                logWorkflow(workflowId, `警告: 無効なitem: ${JSON.stringify(item)}`);
+              }
+            }
+            
+            if (validItems.length > 0) {
+              arr.push({
+                partnerCode: result.partnerCode,
+                items: validItems
+              });
+            }
+          }
+          
+          if (arr.length === 0) {
+            throw new Error("有効なグルーピング結果が得られませんでした");
+          }
+          
+          logWorkflow(workflowId, `検証済みの取引先数: ${arr.length}/${parsed.results.length}`);
+
+          // 各取引先のローカルグループを構築（改良版）
           const results: {
             partnerCode: string;
             groups: { name: string; ids: string[]; total: number }[];
           }[] = [];
+          
+          // より確実なマッピング処理
           const mapByPartner = new Map<string, Map<string, string>>();
           for (const pr of arr) {
             const m = new Map<string, string>();
             for (const it of pr.items) {
-              const memos = splitMemos(it.memo);
+              // memo が複数含まれている場合の処理を改善
+              const memoList = splitMemos(it.memo);
               const label = normalize(it.label);
-              for (const mm of memos) m.set(normalize(mm), label);
+              
+              for (const memo of memoList) {
+                const normalizedMemo = normalize(memo);
+                if (normalizedMemo.length > 0) {
+                  m.set(normalizedMemo, label);
+                  // 部分一致も考慮（より柔軟なマッチング）
+                  if (normalizedMemo.length >= 3) {
+                    // 3文字以上の場合は前方一致も登録
+                    const prefix = normalizedMemo.substring(0, Math.min(normalizedMemo.length - 1, 10));
+                    if (prefix.length >= 3) {
+                      m.set(prefix, label);
+                    }
+                  }
+                }
+              }
             }
             mapByPartner.set(pr.partnerCode, m);
+            
+            // ログ出力（デバッグ用）
+            logWorkflow(
+              workflowId,
+              `取引先${pr.partnerCode}のマッピング数: ${m.size}`
+            );
           }
 
           for (const pt of partnerTasks) {
@@ -209,15 +335,49 @@ export async function ensureAutoGrouping(
               string,
               { name: string; ids: string[]; total: number }
             >();
+            
+            let matchedCount = 0;
+            let unmatchedCount = 0;
+            
             for (const e of entriesByPartner.get(pt.partnerCode) ?? []) {
               const keyMemo = normalize(e.memo);
-              const label = mapping.get(keyMemo) ?? keyMemo;
+              let label = mapping.get(keyMemo);
+              
+              // 完全一致しない場合、部分一致を試す
+              if (!label) {
+                for (const [mappedMemo, mappedLabel] of mapping) {
+                  // 前方一致またはキーワード一致を試す
+                  if (keyMemo.includes(mappedMemo) || mappedMemo.includes(keyMemo)) {
+                    label = mappedLabel;
+                    logWorkflow(
+                      workflowId,
+                      `部分一致: ${keyMemo} → ${mappedMemo} (${mappedLabel})`
+                    );
+                    break;
+                  }
+                }
+              }
+              
+              // まだマッチしない場合は元のmemoを使用
+              if (!label) {
+                label = keyMemo;
+                unmatchedCount++;
+              } else {
+                matchedCount++;
+              }
+              
               const key = `${pt.partnerCode}|${label}`;
               const g = local.get(key) ?? { name: label, ids: [], total: 0 };
               g.ids.push(e.id);
               g.total += n(e.debit) - n(e.credit);
               local.set(key, g);
             }
+            
+            // マッチング結果のログ
+            logWorkflow(
+              workflowId,
+              `取引先${pt.partnerCode}: マッチ${matchedCount}件, 未マッチ${unmatchedCount}件`
+            );
             // 日本語化: 取引先単位のグルーピング結果
             const pn = nameByPartner.get(pt.partnerCode) || pt.partnerCode;
             logWorkflow(

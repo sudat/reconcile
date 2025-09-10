@@ -166,104 +166,123 @@ export async function importBalanceDatasetAction(form: FormData) {
       return { ok: false as const, error: `指定の年月(${ym})に一致する明細がありません${hint}` };
     }
 
-    // 3) DB 反映（グループ単位でUPSERT + 洗替）
+    // 3) DB 反映（一括処理でパフォーマンス向上）
     const results: { datasetId: string; deptCode: string; subjectCode: string; count: number }[] = [];
     const fileName = String(form.get("fileName") || "uploaded.xlsx");
     const fileSize = Number(form.get("fileSize") || fileBuf.length);
     const now = new Date();
 
-    for (const g of groups.values()) {
-      const { deptCode, subjectCode, rows } = g;
-      // 日本語化: 部門×科目ごとの取り込み開始
-      logLine(workflowId, `取り込み開始: 部門=${deptCode}, 科目=${subjectCode}, 対象行数=${rows.length}`);
-      // dataset を processing にセット
-      const dataset = await prisma.dataset.upsert({
-        where: { deptCode_subjectCode_ym: { deptCode, subjectCode, ym } },
-        update: { status: "processing" },
-        create: { deptCode, subjectCode, ym, status: "processing" },
-      });
+    // 日本語化: 洗い替え処理開始
+    logLine(workflowId, `洗い替え処理開始: 対象部門×科目=${groups.size}件 - 既存データを完全削除して新規作成します`);
 
-      const job = await prisma.importJob.create({
-        data: { datasetId: dataset.id, fileName, fileSize, fileHash, status: "processing" },
-      });
+    // 一括トランザクション内で全データセット処理（タイムアウト延長）
+    await prisma.$transaction(async (tx) => {
+      // 1) 全データセットとジョブを事前作成
+      const datasetMap = new Map<string, { id: string; importJobId: string }>();
+      
+      for (const g of groups.values()) {
+        const { deptCode, subjectCode } = g;
+        const dataset = await tx.dataset.upsert({
+          where: { deptCode_subjectCode_ym: { deptCode, subjectCode, ym } },
+          update: { status: "processing" },
+          create: { deptCode, subjectCode, ym, status: "processing" },
+        });
 
-      // 既存有効行
-      const existing = await prisma.entry.findMany({
-        where: { datasetId: dataset.id, softDeletedAt: null },
-        select: { id: true, rowKey: true },
-      });
-      const existingSet = new Set(existing.map((e) => e.rowKey));
-      const newRowKeys = new Set<string>();
+        const job = await tx.importJob.create({
+          data: { datasetId: dataset.id, fileName, fileSize, fileHash, status: "processing" },
+        });
 
-      // 新規と更新に分割
-      const toCreate = rows.filter((r) => !existingSet.has(r.rowKey));
-      const toUpdate = rows.filter((r) => existingSet.has(r.rowKey));
-      toCreate.forEach((r) => newRowKeys.add(r.rowKey));
-      toUpdate.forEach((r) => newRowKeys.add(r.rowKey));
+        datasetMap.set(`${deptCode}|${subjectCode}`, { id: dataset.id, importJobId: job.id });
+      }
 
-      if (toCreate.length > 0) {
-        const data = toCreate.map((r) => ({
-          datasetId: dataset.id,
-          rowKey: r.rowKey,
-          date: new Date(r.date),
-          voucherNo: r.voucherNo,
-          partnerCode: r.partnerCode,
-          partnerName: r.partnerName,
-          memo: r.memo,
-          debit: BigInt(Math.trunc(r.debit)),
-          credit: BigInt(Math.trunc(r.credit)),
-          balance: BigInt(Math.trunc(r.balance)),
-          softDeletedAt: null as Date | null,
-          importJobId: job.id,
-        }));
-        const CREATE_CHUNK = 1000;
-        for (let i = 0; i < data.length; i += CREATE_CHUNK) {
-          await prisma.entry.createMany({ data: data.slice(i, i + CREATE_CHUNK), skipDuplicates: true });
+      // 2) 洗い替え処理：既存データの完全削除→新規作成
+      for (const g of groups.values()) {
+        const { deptCode, subjectCode, rows } = g;
+        const dsInfo = datasetMap.get(`${deptCode}|${subjectCode}`)!;
+
+        logLine(workflowId, `洗い替え処理開始: 部門=${deptCode}, 科目=${subjectCode}`);
+
+        // Step1: 既存データのカスケード削除（ProjectEntry → Entry → Project）
+        const existingEntries = await tx.entry.findMany({
+          where: { datasetId: dsInfo.id },
+          select: { id: true },
+        });
+        const existingEntryIds = existingEntries.map(e => e.id);
+
+        // ProjectEntry削除
+        if (existingEntryIds.length > 0) {
+          const deleteProjectEntriesResult = await tx.projectEntry.deleteMany({
+            where: { entryId: { in: existingEntryIds } }
+          });
+          logLine(workflowId, `ProjectEntry削除完了: ${deleteProjectEntriesResult.count}件`);
         }
-      }
 
-      if (toUpdate.length > 0) {
-        const UPSERT_CHUNK = 500; // 大きめバッチ
-        for (let i = 0; i < toUpdate.length; i += UPSERT_CHUNK) {
-          const slice = toUpdate.slice(i, i + UPSERT_CHUNK);
-          const ops = slice.map((r) =>
-            prisma.entry.update({
-              where: { datasetId_rowKey: { datasetId: dataset.id, rowKey: r.rowKey } },
-              data: {
-                date: new Date(r.date),
-                voucherNo: r.voucherNo,
-                partnerCode: r.partnerCode,
-                partnerName: r.partnerName,
-                memo: r.memo,
-                debit: BigInt(Math.trunc(r.debit)),
-                credit: BigInt(Math.trunc(r.credit)),
-                balance: BigInt(Math.trunc(r.balance)),
-                softDeletedAt: null,
-                importJobId: job.id,
-              },
-            })
-          );
-          await prisma.$transaction(ops);
+        // Project削除
+        const deleteProjectsResult = await tx.project.deleteMany({
+          where: { datasetId: dsInfo.id }
+        });
+        logLine(workflowId, `Project削除完了: ${deleteProjectsResult.count}件`);
+
+        // Entry削除
+        const deleteEntriesResult = await tx.entry.deleteMany({
+          where: { datasetId: dsInfo.id }
+        });
+        logLine(workflowId, `Entry削除完了: ${deleteEntriesResult.count}件`);
+
+        // Step2: 新規データの作成
+        if (rows.length > 0) {
+          const data = rows.map((r) => ({
+            datasetId: dsInfo.id,
+            rowKey: r.rowKey,
+            date: new Date(r.date),
+            voucherNo: r.voucherNo,
+            partnerCode: r.partnerCode,
+            partnerName: r.partnerName,
+            memo: r.memo,
+            debit: BigInt(Math.trunc(r.debit)),
+            credit: BigInt(Math.trunc(r.credit)),
+            balance: BigInt(Math.trunc(r.balance)),
+            softDeletedAt: null as Date | null,
+            importJobId: dsInfo.importJobId,
+          }));
+          
+          const CREATE_CHUNK = 1000;
+          for (let i = 0; i < data.length; i += CREATE_CHUNK) {
+            await tx.entry.createMany({ 
+              data: data.slice(i, i + CREATE_CHUNK), 
+              skipDuplicates: false 
+            });
+          }
+          
+          logLine(workflowId, `Entry作成完了: ${rows.length}件`);
         }
+
+        logLine(workflowId, `洗い替え処理完了: 部門=${deptCode}, 科目=${subjectCode}`);
+        results.push({ datasetId: dsInfo.id, deptCode, subjectCode, count: rows.length });
       }
 
-      // 今回存在しない既存行は論理削除
-      const toDelete = existing.filter((e) => !newRowKeys.has(e.rowKey)).map((e) => e.id);
-      if (toDelete.length > 0) {
-        await prisma.entry.updateMany({ where: { id: { in: toDelete } }, data: { softDeletedAt: now, importJobId: job.id } });
+      // 3) 全データセットのステータス更新
+      for (const result of results) {
+        const currentCount = await tx.entry.count({ 
+          where: { datasetId: result.datasetId, softDeletedAt: null } 
+        });
+        const dsInfo = Array.from(datasetMap.values()).find(ds => ds.id === result.datasetId)!;
+        
+        await tx.dataset.update({ 
+          where: { id: result.datasetId }, 
+          data: { status: "ready", entryCount: currentCount } 
+        });
+        await tx.importJob.update({ 
+          where: { id: dsInfo.importJobId }, 
+          data: { status: "succeeded" } 
+        });
       }
-
-      // 件数更新 + job成功（バッチ後に個別実行）
-      const currentCount = await prisma.entry.count({ where: { datasetId: dataset.id, softDeletedAt: null } });
-      await prisma.dataset.update({ where: { id: dataset.id }, data: { status: "ready", entryCount: currentCount } });
-      await prisma.importJob.update({ where: { id: job.id }, data: { status: "succeeded" } });
-
-      results.push({ datasetId: dataset.id, deptCode, subjectCode, count: rows.length });
-      // 日本語化: 部門×科目ごとの取り込み完了
-      logLine(workflowId, `取り込み完了: 部門=${deptCode}, 科目=${subjectCode}, 取り込み行数=${rows.length}`);
-    }
-    // 日本語化: アップロード処理（Excel→DB反映）全体の完了
-    logLine(workflowId, `Excel取込完了: 対象部門×科目=${results.length}件`);
+    }, {
+      maxWait: 600000, // 10分（洗い替え処理のため延長）
+      timeout: 600000  // 10分（洗い替え処理のため延長）
+    });
+    // 日本語化: 洗い替え処理完了
+    logLine(workflowId, `洗い替え処理完了: 対象部門×科目=${results.length}件 - 全データが新規作成されました`);
     return { ok: true as const, ym, datasets: results, totalGroups: results.length, workflowId };
   } catch (e: unknown) {
     console.error(e);

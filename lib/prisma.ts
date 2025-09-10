@@ -15,6 +15,8 @@ export const prisma =
             { emit: "event", level: "error" },
           ]
         : [{ emit: "event", level: "error" }],
+    // 接続プールタイムアウト設定
+    datasourceUrl: process.env.DATABASE_URL,
   });
 
 // Prismaログをterminal.logへも出力（Terminalと同レベルの可観測性）

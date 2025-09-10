@@ -344,6 +344,8 @@ export default function BalanceDetailPage() {
                     } else {
                       setStatusText(`[処理中...]`);
                     }
+                  } else {
+                    console.warn(`[Progress] 進捗データ取得失敗:`, p);
                   }
                 } catch (e) {
                   console.warn(`[Progress Error]`, e);
@@ -351,8 +353,8 @@ export default function BalanceDetailPage() {
               }, 1000) as unknown as number;
             };
             
-            // Server Action開始前に少し遅延してポーリング開始（進捗初期化を待つ）
-            setTimeout(startPolling, 1000);
+            // Server Action開始直後にポーリング開始（初期状態をキャッチ）
+            startPolling();
             const res = await uploadAndGroupAllAction(fd);
             if (!res || res.ok === false) {
               console.error(res?.error || "アップロード処理に失敗しました");
