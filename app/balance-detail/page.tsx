@@ -18,31 +18,43 @@ import { toast } from "sonner";
 // まとめ取得に切替
 import { getBalanceAllAction } from "@/app/actions/balance-get-all";
 
-type BalanceAllResult = {
-  ok: true;
-  ym: string;
-  scopes: Array<{ datasetId: string; deptCode: string; subjectCode: string }>;
-  projects: Array<{ id: string; datasetId: string; name: string; orderNo: number }>;
-  links: Array<{ projectId: string; entryId: string }>;
-  entries: Array<{
-    id: string;
-    datasetId: string;
-    date: string;
-    voucherNo: string;
-    partnerCode: string | null;
-    partnerName: string | null;
-    memo: string | null;
-    debit: number;
-    credit: number;
-    balance: number;
-  }>;
-} | {
-  ok: false;
-  error: string;
-};
+type BalanceAllResult =
+  | {
+      ok: true;
+      ym: string;
+      scopes: Array<{
+        datasetId: string;
+        deptCode: string;
+        subjectCode: string;
+      }>;
+      projects: Array<{
+        id: string;
+        datasetId: string;
+        name: string;
+        orderNo: number;
+      }>;
+      links: Array<{ projectId: string; entryId: string }>;
+      entries: Array<{
+        id: string;
+        datasetId: string;
+        date: string;
+        voucherNo: string;
+        partnerCode: string | null;
+        partnerName: string | null;
+        memo: string | null;
+        debit: number;
+        credit: number;
+        balance: number;
+      }>;
+    }
+  | {
+      ok: false;
+      error: string;
+    };
 // import { ensureAutoGrouping } from "@/app/actions/project-autogroup"; // orchestrated on server
 import { uploadAndGroupAllAction } from "@/app/actions/upload-and-group";
 import { getProgressAction } from "@/app/actions/progress";
+import { neonWarmupAction } from "@/app/actions/neon-warmup";
 // import { PROCESSING } from "@/constants/processing";
 
 const AUTO_SHOW_LATEST = false; // 初期表示: 最新自動 or 表示待ち（要件検討点）
@@ -69,12 +81,65 @@ export default function BalanceDetailPage() {
   const [statusText, setStatusText] = useState<string | null>(null);
 
   const [data, setData] = useState<Dataset | null>(null);
-  const [allStore, setAllStore] = useState<Extract<BalanceAllResult, { ok: true }> | null>(null);
+  const [allStore, setAllStore] = useState<Extract<
+    BalanceAllResult,
+    { ok: true }
+  > | null>(null);
   const hasMatch =
     !!data && dept.code === data.deptCode && subject.code === data.subjectCode;
 
   // 画面内編集用に案件配列をstate管理（D&Dや編集、削除に対応）
   const [projects, setProjects] = useState<Project[]>([]);
+
+  // Neonデータベースのウォームアップ（ページマウント時に実行）
+  useEffect(() => {
+    console.log("[Neon Warmup] useEffect triggered - starting warmup process");
+
+    const warmupNeon = async () => {
+      try {
+        console.log("[Neon Warmup] Starting database warmup...");
+        console.log("[Neon Warmup] Calling neonWarmupAction...");
+
+        const result = await neonWarmupAction();
+        console.log(
+          "[Neon Warmup] Received result from neonWarmupAction:",
+          result
+        );
+
+        if (result.ok) {
+          console.log("[Neon Warmup] Database warmup completed successfully");
+        } else {
+          console.warn("[Neon Warmup] Database warmup failed:", result.error);
+        }
+      } catch (error) {
+        console.error("[Neon Warmup] Unexpected error during warmup:", error);
+        console.error("[Neon Warmup] Error details:", {
+          message: error instanceof Error ? error.message : String(error),
+          stack: error instanceof Error ? error.stack : undefined,
+          name: error instanceof Error ? error.name : undefined,
+        });
+
+        // ネットワークエラーの場合の追加情報
+        if (
+          error instanceof TypeError &&
+          error.message.includes("Failed to fetch")
+        ) {
+          console.error(
+            "[Neon Warmup] Network error detected. This may indicate:"
+          );
+          console.error(
+            "  - DATABASE_URL environment variable is not configured"
+          );
+          console.error("  - Database server is not accessible");
+          console.error("  - Server Action configuration issue");
+        }
+      }
+    };
+
+    // バックグラウンドでウォームアップ実行（UIをブロックしない）
+    console.log("[Neon Warmup] Initiating background warmup...");
+    warmupNeon();
+  }, []); // 空の依存配列でマウント時に一度だけ実行
 
   useEffect(() => {
     if (!shownYm || !data || !hasMatch) return setProjects([]);
@@ -83,7 +148,6 @@ export default function BalanceDetailPage() {
     );
     // 展開状態はリセットしない（ユーザ操作優先）
   }, [shownYm, data, hasMatch]);
-
 
   // 一括トグルの状態
   const projectIds = projects.map((p) => p.id);
@@ -179,73 +243,69 @@ export default function BalanceDetailPage() {
   };
 
   // 単一ペイロードから現在の部門・科目のDatasetに整形
-  const buildDatasetFromAll = useCallback((
-    all: Extract<BalanceAllResult, { ok: true }>,
-    _ym0: string,
-    deptCode0: string,
-    subjectCode0: string
-  ): Dataset | null => {
-    const scope = all.scopes.find(
-      (s) => s.deptCode === deptCode0 && s.subjectCode === subjectCode0
-    );
-    if (!scope) return null;
-    const dsId = scope.datasetId;
-    const projsRaw = all.projects
-      .filter((p) => p.datasetId === dsId)
-      .sort((a, b) => a.orderNo - b.orderNo);
-    const links = all.links.filter((l) =>
-      projsRaw.some((p) => p.id === l.projectId)
-    );
-    const linkedByEntry = new Map<string, string>();
-    for (const l of links) linkedByEntry.set(l.entryId, l.projectId);
-    const entries = all.entries.filter(
-      (e) => e.datasetId === dsId
-    );
+  const buildDatasetFromAll = useCallback(
+    (
+      all: Extract<BalanceAllResult, { ok: true }>,
+      _ym0: string,
+      deptCode0: string,
+      subjectCode0: string
+    ): Dataset | null => {
+      const scope = all.scopes.find(
+        (s) => s.deptCode === deptCode0 && s.subjectCode === subjectCode0
+      );
+      if (!scope) return null;
+      const dsId = scope.datasetId;
+      const projsRaw = all.projects
+        .filter((p) => p.datasetId === dsId)
+        .sort((a, b) => a.orderNo - b.orderNo);
+      const links = all.links.filter((l) =>
+        projsRaw.some((p) => p.id === l.projectId)
+      );
+      const linkedByEntry = new Map<string, string>();
+      for (const l of links) linkedByEntry.set(l.entryId, l.projectId);
+      const entries = all.entries.filter((e) => e.datasetId === dsId);
 
-    const projs = projsRaw.map((p) => ({
-      id: p.id,
-      name: p.name,
-      total: 0,
-      entries: [] as Entry[],
-    }));
-    const byId = new Map(projs.map((p) => [p.id, p] as const));
-    const unassigned: Entry[] = [];
-    for (const e of entries) {
-      const pid = linkedByEntry.get(e.id);
-      const entry: Entry = { ...e, month: "current" } as Entry;
-      if (pid && byId.has(pid)) byId.get(pid)!.entries.push(entry);
-      else unassigned.push(entry);
-    }
-    if (unassigned.length > 0)
-      projs.push({
-        id: "unclassified",
-        name: "未分類",
-        entries: unassigned,
+      const projs = projsRaw.map((p) => ({
+        id: p.id,
+        name: p.name,
         total: 0,
-      });
-    for (const p of projs)
-      p.total = p.entries.reduce((s, x) => s + (x.debit - x.credit), 0);
-    return {
-      deptCode: deptCode0,
-      deptName:
-        departments.find((d) => d.code === deptCode0)?.name ?? deptCode0,
-      subjectCode: subjectCode0,
-      subjectName:
-        subjects.find((s) => s.code === subjectCode0)?.name ?? subjectCode0,
-      carryOver: 0,
-      projects: projs,
-    } satisfies Dataset;
-  }, [departments, subjects]);
+        entries: [] as Entry[],
+      }));
+      const byId = new Map(projs.map((p) => [p.id, p] as const));
+      const unassigned: Entry[] = [];
+      for (const e of entries) {
+        const pid = linkedByEntry.get(e.id);
+        const entry: Entry = { ...e, month: "current" } as Entry;
+        if (pid && byId.has(pid)) byId.get(pid)!.entries.push(entry);
+        else unassigned.push(entry);
+      }
+      if (unassigned.length > 0)
+        projs.push({
+          id: "unclassified",
+          name: "未分類",
+          entries: unassigned,
+          total: 0,
+        });
+      for (const p of projs)
+        p.total = p.entries.reduce((s, x) => s + (x.debit - x.credit), 0);
+      return {
+        deptCode: deptCode0,
+        deptName:
+          departments.find((d) => d.code === deptCode0)?.name ?? deptCode0,
+        subjectCode: subjectCode0,
+        subjectName:
+          subjects.find((s) => s.code === subjectCode0)?.name ?? subjectCode0,
+        carryOver: 0,
+        projects: projs,
+      } satisfies Dataset;
+    },
+    [departments, subjects]
+  );
 
   // タブ切替時に全件ペイロードから再構成（クライアント内で完結）
   useEffect(() => {
     if (!shownYm || !allStore) return;
-    const ds = buildDatasetFromAll(
-      allStore,
-      shownYm,
-      dept.code,
-      subject.code
-    );
+    const ds = buildDatasetFromAll(allStore, shownYm, dept.code, subject.code);
     setData(ds);
   }, [shownYm, dept.code, subject.code, allStore, buildDatasetFromAll]);
 
@@ -274,7 +334,9 @@ export default function BalanceDetailPage() {
             fdAll.set("autogroup", "false"); // 表示時は自動グルーピングを無効化
             const all = await getBalanceAllAction(fdAll);
             if (!all || all.ok === false) {
-              toast.warning(all?.ok === false ? all.error : "データが見つかりません");
+              toast.warning(
+                all?.ok === false ? all.error : "データが見つかりません"
+              );
               setData(null);
               setAllStore(null);
               return;
@@ -331,8 +393,10 @@ export default function BalanceDetailPage() {
                       percent: number;
                     };
                     // デバッグ用ログ
-                    console.log(`[Progress] done=${done}, total=${total}, percent=${percent}`);
-                    
+                    console.log(
+                      `[Progress] done=${done}, total=${total}, percent=${percent}`
+                    );
+
                     // total=0の場合も含めて適切に表示
                     if (total > 0) {
                       setStatusText(
@@ -352,7 +416,7 @@ export default function BalanceDetailPage() {
                 }
               }, 1000) as unknown as number;
             };
-            
+
             // Server Action開始直後にポーリング開始（初期状態をキャッチ）
             startPolling();
             const res = await uploadAndGroupAllAction(fd);
@@ -463,7 +527,6 @@ export default function BalanceDetailPage() {
         onCreateProjectWithEntry={createProjectWithEntry}
         onDeleteProject={deleteProject}
       />
-
     </main>
   );
 }
