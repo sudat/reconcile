@@ -78,6 +78,7 @@ export default function BalanceDetailPage() {
     AUTO_SHOW_LATEST ? currentYm() : null
   );
   const [uploading, setUploading] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [statusText, setStatusText] = useState<string | null>(null);
 
   const [data, setData] = useState<Dataset | null>(null);
@@ -326,8 +327,10 @@ export default function BalanceDetailPage() {
       <HeaderBar
         yearMonth={yearMonth}
         onYearMonthChange={setYearMonth}
+        loading={loading}
         onShow={async () => {
           setShownYm(yearMonth);
+          setLoading(true);
           try {
             const fdAll = new FormData();
             fdAll.set("ym", yearMonth);
@@ -352,6 +355,8 @@ export default function BalanceDetailPage() {
           } catch (e) {
             console.error(e);
             toast.error("表示データの取得に失敗しました");
+          } finally {
+            setLoading(false);
           }
         }}
         uploading={uploading}
