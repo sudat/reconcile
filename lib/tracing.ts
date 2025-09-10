@@ -36,8 +36,11 @@ export async function withResponseTracing<T extends { id: string }>(
     const res = await run();
     try {
       // Link the span to the actual response id for Traces UI
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (span as any).spanData.response_id = (res as any).id;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       if (options?.input !== undefined) (span as any).spanData._input = options.input as any;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       if (options?.attachResponse) (span as any).spanData._response = res as any;
     } catch {}
     return res;

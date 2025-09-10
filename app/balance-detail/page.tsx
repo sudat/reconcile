@@ -1,7 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { DEPARTMENTS, type Department } from "@/constants/masterdata/departments";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  DEPARTMENTS,
+  type Department,
+} from "@/constants/masterdata/departments";
 import { SUBJECTS, type Subject } from "@/constants/masterdata/subjects";
 import { HeaderBar } from "@/components/balance-detail/header-bar";
 import { TabRow } from "@/components/balance-detail/tab-row";
@@ -11,13 +14,36 @@ import { Button } from "@/components/ui/button";
 import { ProjectsTable } from "@/components/balance-detail/projects-table";
 // import { importBalanceDatasetAction } from "@/app/actions/balance-upload"; // moved into uploadAndGroupAllAction
 import { toast } from "sonner";
-import { getBalanceDetailAction } from "@/app/actions/balance-get";
+// import { getBalanceDetailAction } from "@/app/actions/balance-get";
 // まとめ取得に切替
 import { getBalanceAllAction } from "@/app/actions/balance-get-all";
+
+type BalanceAllResult = {
+  ok: true;
+  ym: string;
+  scopes: Array<{ datasetId: string; deptCode: string; subjectCode: string }>;
+  projects: Array<{ id: string; datasetId: string; name: string; orderNo: number }>;
+  links: Array<{ projectId: string; entryId: string }>;
+  entries: Array<{
+    id: string;
+    datasetId: string;
+    date: string;
+    voucherNo: string;
+    partnerCode: string | null;
+    partnerName: string | null;
+    memo: string | null;
+    debit: number;
+    credit: number;
+    balance: number;
+  }>;
+} | {
+  ok: false;
+  error: string;
+};
 // import { ensureAutoGrouping } from "@/app/actions/project-autogroup"; // orchestrated on server
 import { uploadAndGroupAllAction } from "@/app/actions/upload-and-group";
 import { getProgressAction } from "@/app/actions/progress";
-import { PROCESSING } from "@/constants/processing";
+// import { PROCESSING } from "@/constants/processing";
 
 const AUTO_SHOW_LATEST = false; // 初期表示: 最新自動 or 表示待ち（要件検討点）
 
@@ -36,35 +62,33 @@ export default function BalanceDetailPage() {
   const [subject, setSubject] = useState(subjects[0]);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [yearMonth, setYearMonth] = useState<string>(currentYm());
-  const [shownYm, setShownYm] = useState<string | null>(AUTO_SHOW_LATEST ? currentYm() : null);
+  const [shownYm, setShownYm] = useState<string | null>(
+    AUTO_SHOW_LATEST ? currentYm() : null
+  );
   const [uploading, setUploading] = useState(false);
   const [statusText, setStatusText] = useState<string | null>(null);
 
   const [data, setData] = useState<Dataset | null>(null);
-  const [allStore, setAllStore] = useState<
-    | null
-    | {
-        ym: string;
-        scopes: { datasetId: string; deptCode: string; subjectCode: string }[];
-        projects: { id: string; datasetId: string; name: string; orderNo: number }[];
-        links: { projectId: string; entryId: string }[];
-        entries: Entry[] & { datasetId?: string }[];
-      }
-  >(null);
-  const hasMatch = !!data && dept.code === data.deptCode && subject.code === data.subjectCode;
+  const [allStore, setAllStore] = useState<Extract<BalanceAllResult, { ok: true }> | null>(null);
+  const hasMatch =
+    !!data && dept.code === data.deptCode && subject.code === data.subjectCode;
 
   // 画面内編集用に案件配列をstate管理（D&Dや編集、削除に対応）
   const [projects, setProjects] = useState<Project[]>([]);
 
   useEffect(() => {
     if (!shownYm || !data || !hasMatch) return setProjects([]);
-    setProjects((data.projects ?? []).map((p) => ({ ...p, entries: [...p.entries] })));
+    setProjects(
+      (data.projects ?? []).map((p) => ({ ...p, entries: [...p.entries] }))
+    );
     // 展開状態はリセットしない（ユーザ操作優先）
   }, [shownYm, data, hasMatch]);
 
+
   // 一括トグルの状態
   const projectIds = projects.map((p) => p.id);
-  const isAllOpen = projectIds.length > 0 && projectIds.every((id) => expanded[id]);
+  const isAllOpen =
+    projectIds.length > 0 && projectIds.every((id) => expanded[id]);
 
   const moveEntry = (entryId: string, fromId: string, toId: string) => {
     if (fromId === toId) return;
@@ -75,9 +99,14 @@ export default function BalanceDetailPage() {
       const entryIndex = src.entries.findIndex((e) => e.id === entryId);
       if (entryIndex < 0) return prev;
       const entry = src.entries[entryIndex];
-      const newSrc: Project = { ...src, entries: src.entries.filter((e) => e.id !== entryId) };
+      const newSrc: Project = {
+        ...src,
+        entries: src.entries.filter((e) => e.id !== entryId),
+      };
       const newDst: Project = { ...dst, entries: [...dst.entries, entry] };
-      const next = prev.map((p) => (p.id === src.id ? newSrc : p.id === dst.id ? newDst : p));
+      const next = prev.map((p) =>
+        p.id === src.id ? newSrc : p.id === dst.id ? newDst : p
+      );
       return next;
     });
   };
@@ -94,7 +123,14 @@ export default function BalanceDetailPage() {
       const to = arr.findIndex((p) => p.id === overId);
       if (from < 0 || to < 0) return prev;
       const [moved] = arr.splice(from, 1);
-      const insertIndex = place === "before" ? (from < to ? to - 1 : to) : from < to ? to : to + 1;
+      const insertIndex =
+        place === "before"
+          ? from < to
+            ? to - 1
+            : to
+          : from < to
+          ? to
+          : to + 1;
       arr.splice(insertIndex, 0, moved);
       return arr;
     });
@@ -115,7 +151,10 @@ export default function BalanceDetailPage() {
     setProjects((prev) => {
       const srcIdx = prev.findIndex((p) => p.id === fromProjectId);
       if (srcIdx < 0) return prev;
-      const newSrc: Project = { ...prev[srcIdx], entries: prev[srcIdx].entries.filter((x) => x.id !== e.id) };
+      const newSrc: Project = {
+        ...prev[srcIdx],
+        entries: prev[srcIdx].entries.filter((x) => x.id !== e.id),
+      };
       const next = [...prev];
       next[srcIdx] = newSrc;
       next.splice(srcIdx + 1, 0, proj);
@@ -131,27 +170,44 @@ export default function BalanceDetailPage() {
       const rest = prev.filter((p) => p.id !== pid);
       if (target.entries.length === 0) return rest;
       const miscId = ensureMiscProject();
-      return rest.map((p) => (p.id === miscId ? { ...p, entries: [...p.entries, ...target.entries] } : p));
+      return rest.map((p) =>
+        p.id === miscId
+          ? { ...p, entries: [...p.entries, ...target.entries] }
+          : p
+      );
     });
   };
 
   // 単一ペイロードから現在の部門・科目のDatasetに整形
-  function buildDatasetFromAll(
-    all: NonNullable<typeof allStore>,
-    ym0: string,
+  const buildDatasetFromAll = useCallback((
+    all: Extract<BalanceAllResult, { ok: true }>,
+    _ym0: string,
     deptCode0: string,
     subjectCode0: string
-  ): Dataset | null {
-    const scope = all.scopes.find((s) => s.deptCode === deptCode0 && s.subjectCode === subjectCode0);
+  ): Dataset | null => {
+    const scope = all.scopes.find(
+      (s) => s.deptCode === deptCode0 && s.subjectCode === subjectCode0
+    );
     if (!scope) return null;
     const dsId = scope.datasetId;
-    const projsRaw = all.projects.filter((p) => p.datasetId === dsId).sort((a, b) => a.orderNo - b.orderNo);
-    const links = all.links.filter((l) => projsRaw.some((p) => p.id === l.projectId));
+    const projsRaw = all.projects
+      .filter((p) => p.datasetId === dsId)
+      .sort((a, b) => a.orderNo - b.orderNo);
+    const links = all.links.filter((l) =>
+      projsRaw.some((p) => p.id === l.projectId)
+    );
     const linkedByEntry = new Map<string, string>();
     for (const l of links) linkedByEntry.set(l.entryId, l.projectId);
-    const entries = all.entries.filter((e: any) => (e as any).datasetId === dsId);
+    const entries = all.entries.filter(
+      (e) => e.datasetId === dsId
+    );
 
-    const projs = projsRaw.map((p) => ({ id: p.id, name: p.name, total: 0, entries: [] as Entry[] }));
+    const projs = projsRaw.map((p) => ({
+      id: p.id,
+      name: p.name,
+      total: 0,
+      entries: [] as Entry[],
+    }));
     const byId = new Map(projs.map((p) => [p.id, p] as const));
     const unassigned: Entry[] = [];
     for (const e of entries) {
@@ -160,17 +216,38 @@ export default function BalanceDetailPage() {
       if (pid && byId.has(pid)) byId.get(pid)!.entries.push(entry);
       else unassigned.push(entry);
     }
-    if (unassigned.length > 0) projs.push({ id: "unclassified", name: "未分類", entries: unassigned, total: 0 });
-    for (const p of projs) p.total = p.entries.reduce((s, x) => s + (x.debit - x.credit), 0);
+    if (unassigned.length > 0)
+      projs.push({
+        id: "unclassified",
+        name: "未分類",
+        entries: unassigned,
+        total: 0,
+      });
+    for (const p of projs)
+      p.total = p.entries.reduce((s, x) => s + (x.debit - x.credit), 0);
     return {
       deptCode: deptCode0,
-      deptName: departments.find((d) => d.code === deptCode0)?.name ?? deptCode0,
+      deptName:
+        departments.find((d) => d.code === deptCode0)?.name ?? deptCode0,
       subjectCode: subjectCode0,
-      subjectName: subjects.find((s) => s.code === subjectCode0)?.name ?? subjectCode0,
+      subjectName:
+        subjects.find((s) => s.code === subjectCode0)?.name ?? subjectCode0,
       carryOver: 0,
       projects: projs,
     } satisfies Dataset;
-  }
+  }, [departments, subjects]);
+
+  // タブ切替時に全件ペイロードから再構成（クライアント内で完結）
+  useEffect(() => {
+    if (!shownYm || !allStore) return;
+    const ds = buildDatasetFromAll(
+      allStore,
+      shownYm,
+      dept.code,
+      subject.code
+    );
+    setData(ds);
+  }, [shownYm, dept.code, subject.code, allStore, buildDatasetFromAll]);
 
   // 永続化（ダミー）
   const handlePersist = () => {
@@ -197,13 +274,18 @@ export default function BalanceDetailPage() {
             fdAll.set("autogroup", "false"); // 表示時は自動グルーピングを無効化
             const all = await getBalanceAllAction(fdAll);
             if (!all || all.ok === false) {
-              toast.warning((all as any)?.error ?? "データが見つかりません");
+              toast.warning(all?.ok === false ? all.error : "データが見つかりません");
               setData(null);
               setAllStore(null);
               return;
             }
-            setAllStore(all as any);
-            const ds = buildDatasetFromAll(all as any, yearMonth, dept.code, subject.code);
+            setAllStore(all);
+            const ds = buildDatasetFromAll(
+              all,
+              yearMonth,
+              dept.code,
+              subject.code
+            );
             setData(ds);
           } catch (e) {
             console.error(e);
@@ -216,6 +298,7 @@ export default function BalanceDetailPage() {
           if (!file) return;
           setUploading(true);
           setStatusText("[処理準備中...]");
+          let timer: number | null = null;
           try {
             const { upload } = await import("@vercel/blob/client");
             // 1) Blob へアップロード
@@ -235,24 +318,31 @@ export default function BalanceDetailPage() {
             fd.set("workflowId", workflowId);
 
             // 進捗ポーリング（1秒間隔）を開始
-            let timer: number | null = null;
-            try {
+            const startPolling = () => {
               timer = window.setInterval(async () => {
                 try {
                   const pf = new FormData();
                   pf.set("workflowId", workflowId);
                   const p = await getProgressAction(pf);
                   if (p && p.ok && p.progress) {
-                    const { done, total, percent } = p.progress as { done: number; total: number; percent: number };
+                    const { done, total, percent } = p.progress as {
+                      done: number;
+                      total: number;
+                      percent: number;
+                    };
                     if (total > 0) {
-                      setStatusText(`[処理中 ${Math.round(percent)}%] ${done}/${total}`);
+                      setStatusText(
+                        `[処理中 ${Math.round(percent)}%] ${done}/${total}`
+                      );
                     } else {
                       setStatusText(`[処理中...]`);
                     }
                   }
                 } catch {}
               }, 1000) as unknown as number;
-            } catch {}
+            };
+            
+            startPolling();
             const res = await uploadAndGroupAllAction(fd);
             if (!res || res.ok === false) {
               console.error(res?.error || "アップロード処理に失敗しました");
@@ -262,7 +352,7 @@ export default function BalanceDetailPage() {
             console.info(
               "[persist+group] ym=%s imported groups=%d",
               ym,
-              (res as Record<string, unknown>)?.totalGroups as number ?? 0
+              ((res as Record<string, unknown>)?.totalGroups as number) ?? 0
             );
             toast.success("取り込みとAI分類が完了しました");
             setStatusText(`[AI分類が完了しました]`);
@@ -274,8 +364,13 @@ export default function BalanceDetailPage() {
               fdAll.set("autogroup", "false");
               const all = await getBalanceAllAction(fdAll);
               if (all && all.ok) {
-                setAllStore(all as any);
-                const ds = buildDatasetFromAll(all as any, ym, dept.code, subject.code);
+                setAllStore(all);
+                const ds = buildDatasetFromAll(
+                  all,
+                  ym,
+                  dept.code,
+                  subject.code
+                );
                 setData(ds);
               }
             } catch {}
@@ -285,7 +380,9 @@ export default function BalanceDetailPage() {
             toast.error("アップロードに失敗しました");
           } finally {
             // ポーリング停止
-            try { if (timer != null) window.clearInterval(timer); } catch {}
+            try {
+              if (timer !== null) window.clearInterval(timer);
+            } catch {}
             // ステータスは少しだけ残してから消す
             setTimeout(() => setStatusText(null), 4000);
             setUploading(false);
@@ -327,7 +424,11 @@ export default function BalanceDetailPage() {
           <ExpandAllToggle
             checked={isAllOpen}
             onCheckedChange={(checked) => {
-              setExpanded(() => (checked ? Object.fromEntries(projects.map((p) => [p.id, true])) : {}));
+              setExpanded(() =>
+                checked
+                  ? Object.fromEntries(projects.map((p) => [p.id, true]))
+                  : {}
+              );
             }}
             disabled={!shownYm || !hasMatch || projects.length === 0}
           />
@@ -342,17 +443,15 @@ export default function BalanceDetailPage() {
         onToggleProject={(id) => setExpanded((e) => ({ ...e, [id]: !e[id] }))}
         onMoveEntry={moveEntry}
         onReorderProjects={reorderProjects}
-        onEditProjectName={(id, name) => setProjects((prev) => prev.map((p) => (p.id === id ? { ...p, name } : p)))}
+        onEditProjectName={(id, name) =>
+          setProjects((prev) =>
+            prev.map((p) => (p.id === id ? { ...p, name } : p))
+          )
+        }
         onCreateProjectWithEntry={createProjectWithEntry}
         onDeleteProject={deleteProject}
       />
 
-      {/* タブ切替時に全件ペイロードから再構成（クライアント内で完結） */}
-      {useEffect(() => {
-        if (!shownYm || !allStore) return;
-        const ds = buildDatasetFromAll(allStore, shownYm, dept.code, subject.code);
-        setData(ds);
-      }, [shownYm, dept.code, subject.code, allStore])}
     </main>
   );
 }

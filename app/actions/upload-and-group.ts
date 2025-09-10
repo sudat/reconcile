@@ -5,7 +5,7 @@ import { PROCESSING } from "@/constants/processing";
 import { formatUploadTraceTitle, withSpan, withWorkflowTrace } from "@/lib/tracing";
 import { logWorkflow } from "@/lib/logger";
 import { randomUUID } from "crypto";
-import { setProgress, clearProgress } from "@/lib/progress";
+import { setProgress /*, clearProgress*/ } from "@/lib/progress";
 
 type DatasetScope = { deptCode: string; subjectCode: string };
 

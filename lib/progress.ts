@@ -4,7 +4,6 @@
 type Progress = { total: number; done: number; updatedAt: number };
 
 declare global {
-  // eslint-disable-next-line no-var
   var __workflowProgressStore: Map<string, Progress> | undefined;
 }
 

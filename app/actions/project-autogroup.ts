@@ -5,7 +5,7 @@ import OpenAI from "openai";
 import { AI_GROUPING } from "@/constants/ai";
 import { randomUUID } from "crypto";
 import {
-  withWorkflowTrace,
+  // withWorkflowTrace,
   withSpan,
   withResponseTracing,
 } from "@/lib/tracing";
@@ -137,7 +137,7 @@ export async function ensureAutoGrouping(
             : abstr >= 0.5
             ? `月/期間/回数/枝番などの補助情報は省略し、要点語を残す（例: "電気代", "水道代", "クレジット手数料(セゾン)"）。`
             : `摘要の表現をできるだけ保持しつつ、末尾のノイズ（全角括弧の注記など）は省略。`;
-        const MAX = Math.max(10, Math.min(500, AI_GROUPING.maxMemosPerPartner));
+        // const MAX = Math.max(10, Math.min(500, AI_GROUPING.maxMemosPerPartner));
 
         const payload = partnerTasks.map((p) => ({
           partnerCode: p.partnerCode,
