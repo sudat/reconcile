@@ -359,8 +359,11 @@ export default function BalanceDetailPage() {
         onUploadFile={async (file, ym) => {
           if (!file) return;
           setUploading(true);
-          setStatusText("[処理準備中...]");
+          setStatusText("[1. ファイルアップロード中...]");
+
           let timer: number | null = null;
+          let currentStep = 1;
+
           try {
             const { upload } = await import("@vercel/blob/client");
             // 1) Blob へアップロード
@@ -369,6 +372,10 @@ export default function BalanceDetailPage() {
               handleUploadUrl: "/api/blob/upload",
               multipart: true,
             });
+
+            setStatusText("[2. 仕訳データ保存中...]");
+            currentStep = 2;
+
             // 2) Server Action でDB永続化＋AI分類（サーバ側でトップレベルトレース開始）
             const fd = new FormData();
             fd.set("ym", ym);
@@ -397,16 +404,17 @@ export default function BalanceDetailPage() {
                       `[Progress] done=${done}, total=${total}, percent=${percent}`
                     );
 
-                    // total=0の場合も含めて適切に表示
-                    if (total > 0) {
-                      setStatusText(
-                        `[処理中 ${Math.round(percent)}%] ${done}/${total}`
-                      );
-                    } else if (done === 0 && total === 0) {
-                      // 進捗データがまだ初期化されていない状態
-                      setStatusText(`[処理準備中...]`);
-                    } else {
-                      setStatusText(`[処理中...]`);
+                    // ステータス表示の更新ロジック
+                    if (total > 0 && percent < 100) {
+                      // AI分類処理中（3段階目）
+                      if (currentStep !== 3) {
+                        setStatusText("[3. AI分類処理中...]");
+                        currentStep = 3;
+                      }
+                    } else if (percent >= 100 && currentStep !== 4) {
+                      // データ読込中（4段階目）
+                      setStatusText("[4. データ読込中...]");
+                      currentStep = 4;
                     }
                   } else {
                     console.warn(`[Progress] 進捗データ取得失敗:`, p);
@@ -430,9 +438,11 @@ export default function BalanceDetailPage() {
               ym,
               ((res as Record<string, unknown>)?.totalGroups as number) ?? 0
             );
-            toast.success("取り込みとAI分類が完了しました");
-            setStatusText(`[AI分類が完了しました]`);
+
             // アップロード後: 単一リクエストで全件取得して即時反映
+            setStatusText("[4. データ読込中...]");
+            currentStep = 4;
+
             try {
               const fdAll = new FormData();
               fdAll.set("ym", ym);
@@ -449,8 +459,14 @@ export default function BalanceDetailPage() {
                 );
                 setData(ds);
               }
-            } catch {}
+            } catch (e) {
+              console.error("データ読み込みエラー:", e);
+              toast.error("データ読み込みに失敗しました");
+            }
+
             setShownYm(ym);
+            // 全ての処理が完了したら成功通知を表示
+            toast.success("取り込みとAI分類が完了しました");
           } catch (e) {
             console.error(e);
             toast.error("アップロードに失敗しました");
@@ -460,7 +476,7 @@ export default function BalanceDetailPage() {
               if (timer !== null) window.clearInterval(timer);
             } catch {}
             // ステータスは少しだけ残してから消す
-            setTimeout(() => setStatusText(null), 4000);
+            setTimeout(() => setStatusText(null), 2000);
             setUploading(false);
           }
         }}
