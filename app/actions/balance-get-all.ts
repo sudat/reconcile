@@ -9,7 +9,29 @@ function n(x: bigint | number | null | undefined): number {
   return Number(x);
 }
 
-export async function getBalanceAllAction(form: FormData) {
+export type BalanceAllOk = {
+  ok: true;
+  ym: string;
+  scopes: Array<{ datasetId: string; deptCode: string; subjectCode: string }>;
+  projects: Array<{ id: string; datasetId: string; name: string; partnerName: string | null; orderNo: number }>;
+  links: Array<{ projectId: string; entryId: string }>;
+  entries: Array<{
+    id: string;
+    datasetId: string;
+    date: string; // ISO-YYYY-MM-DD
+    voucherNo: string;
+    partnerCode: string | null;
+    partnerName: string | null;
+    memo: string | null;
+    debit: number;
+    credit: number;
+    balance: number;
+  }>;
+};
+
+export type BalanceAllErr = { ok: false; error: string };
+
+export async function getBalanceAllAction(form: FormData): Promise<BalanceAllOk | BalanceAllErr> {
   await waitNeonReady("balance-get-all");
   const ym = String(form.get("ym") || "");
   const autogroup = String(form.get("autogroup") || "true").toLowerCase() === "true";
@@ -62,7 +84,8 @@ export async function getBalanceAllAction(form: FormData) {
   }
 
   const datasetIds = datasets.map(d => d.id);
-  if (datasetIds.length === 0) return { ok: true as const, ym, scopes: [], projects: [], links: [], entries: [] };
+  if (datasetIds.length === 0)
+    return { ok: true as const, ym, scopes: [], projects: [], links: [], entries: [] };
 
   // 3) プロジェクト/リンク/エントリを一括取得
   const projectsDb = await prisma.project.findMany({
@@ -90,15 +113,15 @@ export async function getBalanceAllAction(form: FormData) {
     entries: entriesDb.map(e => ({
       id: e.id,
       datasetId: e.datasetId,
-      date: e.date,
+      // ISO(YYYY-MM-DD)へ正規化（クライアント表示用に統一）
+      date: (e.date instanceof Date ? e.date : new Date(e.date as unknown as string)).toISOString().slice(0, 10),
       voucherNo: e.voucherNo,
-      partnerCode: e.partnerCode,
-      partnerName: e.partnerName,
-      memo: e.memo,
+      partnerCode: (e as { partnerCode: string | null }).partnerCode ?? null,
+      partnerName: (e as { partnerName: string | null }).partnerName ?? null,
+      memo: (e as { memo: string | null }).memo ?? null,
       debit: n(e.debit),
       credit: n(e.credit),
       balance: n(e.balance),
     })),
   };
 }
-

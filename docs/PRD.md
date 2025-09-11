@@ -42,6 +42,7 @@
  - 2025-09-09: `/balance-detail` の案件名インライン編集で稀に発生した実行時例外（`currentTarget.value` 参照時の `null`）を解消。
  - 2025-09-11: Neon Warmup処理を廃止（ページマウント時の事前ウォームアップを削除、`waitNeonReady` は互換目的でno-op化）。
  - 2025-09-11: 自動グルーピング処理（`ensureAutoGrouping`）の型定義を厳密化し `any` を排除。ESLint `@typescript-eslint/no-explicit-any` に起因するビルド失敗を解消。
+ - 2025-09-11: 一括取得API `getBalanceAllAction` の返却を正規化（`entries[].date` を `YYYY-MM-DD` 文字列へ統一、返却型 `BalanceAllOk/Err` を公開）。
 
 ## 2. 照合（TB/GL）
 

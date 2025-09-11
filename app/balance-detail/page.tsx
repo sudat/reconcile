@@ -17,41 +17,9 @@ import { toast } from "sonner";
 // import { getBalanceDetailAction } from "@/app/actions/balance-get";
 // まとめ取得に切替
 import { getBalanceAllAction } from "@/app/actions/balance-get-all";
+import type { BalanceAllOk, BalanceAllErr } from "@/app/actions/balance-get-all";
 
-type BalanceAllResult =
-  | {
-      ok: true;
-      ym: string;
-      scopes: Array<{
-        datasetId: string;
-        deptCode: string;
-        subjectCode: string;
-      }>;
-      projects: Array<{
-        id: string;
-        datasetId: string;
-        name: string;
-        partnerName: string | null;
-        orderNo: number;
-      }>;
-      links: Array<{ projectId: string; entryId: string }>;
-      entries: Array<{
-        id: string;
-        datasetId: string;
-        date: string;
-        voucherNo: string;
-        partnerCode: string | null;
-        partnerName: string | null;
-        memo: string | null;
-        debit: number;
-        credit: number;
-        balance: number;
-      }>;
-    }
-  | {
-      ok: false;
-      error: string;
-    };
+type BalanceAllResult = BalanceAllOk | BalanceAllErr;
 // import { ensureAutoGrouping } from "@/app/actions/project-autogroup"; // orchestrated on server
 import { uploadAndGroupAllAction } from "@/app/actions/upload-and-group";
 import { getProgressAction } from "@/app/actions/progress";
@@ -235,7 +203,18 @@ export default function BalanceDetailPage() {
       const unassigned: Entry[] = [];
       for (const e of entries) {
         const pid = linkedByEntry.get(e.id);
-        const entry: Entry = { ...e, month: "current" } as Entry;
+        const entry: Entry = {
+          id: e.id,
+          date: e.date,
+          voucherNo: e.voucherNo,
+          partnerCode: e.partnerCode ?? "",
+          partnerName: e.partnerName ?? "",
+          memo: e.memo ?? "",
+          debit: e.debit,
+          credit: e.credit,
+          balance: e.balance,
+          month: "current",
+        };
         if (pid && byId.has(pid)) byId.get(pid)!.entries.push(entry);
         else unassigned.push(entry);
       }
