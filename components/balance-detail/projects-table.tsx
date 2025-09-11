@@ -18,6 +18,11 @@ type CtxState =
       | { type: "project"; projectId: string; x: number; y: number }
     );
 
+type SortConfig = {
+  column: 'partnerCode' | 'partnerName' | 'projectName' | 'debit' | 'credit' | 'balance';
+  direction: 'asc' | 'desc';
+} | null;
+
 export function ProjectsTable({
   shownYm,
   hasMatch,
@@ -44,12 +49,81 @@ export function ProjectsTable({
   const dragRef = useRef<DragState | null>(null);
   const [ctxMenu, setCtxMenu] = useState<CtxState>(null);
   const [editing, setEditing] = useState<{ id: string; name: string } | null>(null);
+  const [sortConfig, setSortConfig] = useState<SortConfig>(null);
 
   const calcProjectTotal = (p: Project) => p.entries.reduce((s, e) => s + (e.debit - e.credit), 0);
   const monthTotal = useMemo(
     () => projects.reduce((s, p) => s + calcProjectTotal(p), 0),
     [projects]
   );
+
+  const handleSort = (column: NonNullable<SortConfig>['column']) => {
+    const direction = 
+      sortConfig?.column === column && sortConfig.direction === 'asc' 
+        ? 'desc' 
+        : 'asc';
+    
+    setSortConfig({ column, direction });
+  };
+
+  const getSortIcon = (column: NonNullable<SortConfig>['column']) => {
+    if (sortConfig?.column !== column) {
+      return <span className="text-muted-foreground/50">▽</span>;
+    }
+    return sortConfig.direction === 'asc' 
+      ? <span className="text-foreground">▲</span>
+      : <span className="text-foreground">▼</span>;
+  };
+
+  const sortedProjects = useMemo(() => {
+    if (!sortConfig) return projects;
+
+    return [...projects].sort((a, b) => {
+      const { column, direction } = sortConfig;
+      let aValue: string | number;
+      let bValue: string | number;
+
+      // 各プロジェクトの比較値を取得
+      switch (column) {
+        case 'partnerCode':
+          aValue = a.entries.find((e) => e.partnerCode)?.partnerCode?.trim() || '';
+          bValue = b.entries.find((e) => e.partnerCode)?.partnerCode?.trim() || '';
+          break;
+        case 'partnerName':
+          aValue = a.entries.find((e) => e.partnerName)?.partnerName?.trim() || '';
+          bValue = b.entries.find((e) => e.partnerName)?.partnerName?.trim() || '';
+          break;
+        case 'projectName':
+          aValue = a.name?.trim() || '';
+          bValue = b.name?.trim() || '';
+          break;
+        case 'debit':
+          aValue = a.entries.reduce((s, e) => s + e.debit, 0);
+          bValue = b.entries.reduce((s, e) => s + e.debit, 0);
+          break;
+        case 'credit':
+          aValue = a.entries.reduce((s, e) => s + e.credit, 0);
+          bValue = b.entries.reduce((s, e) => s + e.credit, 0);
+          break;
+        case 'balance':
+          aValue = calcProjectTotal(a);
+          bValue = calcProjectTotal(b);
+          break;
+        default:
+          return 0;
+      }
+
+      // 文字列と数値の比較
+      let comparison = 0;
+      if (typeof aValue === 'string' && typeof bValue === 'string') {
+        comparison = aValue.localeCompare(bValue, 'ja');
+      } else {
+        comparison = (aValue as number) - (bValue as number);
+      }
+
+      return direction === 'asc' ? comparison : -comparison;
+    });
+  }, [projects, sortConfig, calcProjectTotal]);
 
   return (
     <>
@@ -66,14 +140,62 @@ export function ProjectsTable({
         </colgroup>
         <TableHeader>
           <TableRow>
-            <TableHead className="whitespace-nowrap">取引先</TableHead>
-            <TableHead className="whitespace-nowrap">取引先名</TableHead>
-            <TableHead className="whitespace-nowrap">案件名／仕訳摘要</TableHead>
+            <TableHead 
+              className="whitespace-nowrap cursor-pointer hover:bg-muted/50 select-none"
+              onClick={() => handleSort('partnerCode')}
+            >
+              <div className="flex items-center gap-1">
+                取引先
+                {getSortIcon('partnerCode')}
+              </div>
+            </TableHead>
+            <TableHead 
+              className="whitespace-nowrap cursor-pointer hover:bg-muted/50 select-none"
+              onClick={() => handleSort('partnerName')}
+            >
+              <div className="flex items-center gap-1">
+                取引先名
+                {getSortIcon('partnerName')}
+              </div>
+            </TableHead>
+            <TableHead 
+              className="whitespace-nowrap cursor-pointer hover:bg-muted/50 select-none"
+              onClick={() => handleSort('projectName')}
+            >
+              <div className="flex items-center gap-1">
+                案件名／仕訳摘要
+                {getSortIcon('projectName')}
+              </div>
+            </TableHead>
             <TableHead className="whitespace-nowrap w-24 truncate">計上日</TableHead>
             <TableHead className="whitespace-nowrap w-24 truncate">伝票番号</TableHead>
-            <TableHead className="text-right whitespace-nowrap">借方</TableHead>
-            <TableHead className="text-right whitespace-nowrap">貸方</TableHead>
-            <TableHead className="text-right whitespace-nowrap">残高</TableHead>
+            <TableHead 
+              className="text-right whitespace-nowrap cursor-pointer hover:bg-muted/50 select-none"
+              onClick={() => handleSort('debit')}
+            >
+              <div className="flex items-center justify-end gap-1">
+                借方
+                {getSortIcon('debit')}
+              </div>
+            </TableHead>
+            <TableHead 
+              className="text-right whitespace-nowrap cursor-pointer hover:bg-muted/50 select-none"
+              onClick={() => handleSort('credit')}
+            >
+              <div className="flex items-center justify-end gap-1">
+                貸方
+                {getSortIcon('credit')}
+              </div>
+            </TableHead>
+            <TableHead 
+              className="text-right whitespace-nowrap cursor-pointer hover:bg-muted/50 select-none"
+              onClick={() => handleSort('balance')}
+            >
+              <div className="flex items-center justify-end gap-1">
+                残高
+                {getSortIcon('balance')}
+              </div>
+            </TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -94,7 +216,7 @@ export function ProjectsTable({
           )}
 
           {shownYm &&
-            projects.map((p) => {
+            sortedProjects.map((p) => {
               const isOpen = expanded[p.id];
               const isPrevProject = p.entries.length > 0 && p.entries.every((e) => e.month === "prev");
               const projectTone = isPrevProject
