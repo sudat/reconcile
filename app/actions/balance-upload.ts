@@ -231,6 +231,21 @@ export async function importBalanceDatasetAction(form: FormData) {
 
         // Step2: 新規データの作成
         if (rows.length > 0) {
+          // 重複データの事前チェック
+          const rowKeySet = new Set<string>();
+          const duplicateKeys = new Set<string>();
+          rows.forEach(r => {
+            if (rowKeySet.has(r.rowKey)) {
+              duplicateKeys.add(r.rowKey);
+            } else {
+              rowKeySet.add(r.rowKey);
+            }
+          });
+          
+          if (duplicateKeys.size > 0) {
+            logLine(workflowId, `重複データ検出: ${duplicateKeys.size}件のrowKeyが重複 (部門=${deptCode}, 科目=${subjectCode})`);
+          }
+
           const data = rows.map((r) => ({
             datasetId: dsInfo.id,
             rowKey: r.rowKey,
@@ -250,7 +265,7 @@ export async function importBalanceDatasetAction(form: FormData) {
           for (let i = 0; i < data.length; i += CREATE_CHUNK) {
             await tx.entry.createMany({ 
               data: data.slice(i, i + CREATE_CHUNK), 
-              skipDuplicates: false 
+              skipDuplicates: true // 重複データをスキップして処理継続
             });
           }
           
