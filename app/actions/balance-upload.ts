@@ -172,7 +172,7 @@ export async function importBalanceDatasetAction(form: FormData) {
     const fileSize = Number(form.get("fileSize") || fileBuf.length);
 
     // 日本語化: 洗い替え処理開始
-    logLine(workflowId, `洗い替え処理開始: 対象部門×科目=${groups.size}件 - 既存データを完全削除して新規作成します`);
+    logLine(workflowId, `洗い替え処理開始: 対象部門×科目=${groups.size}件 - 一括削除・一括挿入方式`);
 
     // 一括トランザクション内で全データセット処理（タイムアウト延長）
     await prisma.$transaction(async (tx) => {
@@ -194,41 +194,49 @@ export async function importBalanceDatasetAction(form: FormData) {
         datasetMap.set(`${deptCode}|${subjectCode}`, { id: dataset.id, importJobId: job.id });
       }
 
-      // 2) 洗い替え処理：既存データの完全削除→新規作成
+      // 2) 【新方式】対象データセットIDを一括特定
+      const targetDatasetIds = Array.from(datasetMap.values()).map(ds => ds.id);
+      logLine(workflowId, `対象データセット特定完了: ${targetDatasetIds.length}件`);
+
+      // 3) 【新方式】一括削除処理（ProjectEntry → Project → Entry）
+      logLine(workflowId, `一括削除開始: 対象データセット=${targetDatasetIds.length}件`);
+      
+      // Step1: 対象Entryを特定
+      const targetEntries = await tx.entry.findMany({
+        where: { datasetId: { in: targetDatasetIds } },
+        select: { id: true },
+      });
+      const targetEntryIds = targetEntries.map(e => e.id);
+      logLine(workflowId, `削除対象Entry特定: ${targetEntryIds.length}件`);
+
+      // Step2: ProjectEntry一括削除
+      if (targetEntryIds.length > 0) {
+        const deleteProjectEntriesResult = await tx.projectEntry.deleteMany({
+          where: { entryId: { in: targetEntryIds } }
+        });
+        logLine(workflowId, `ProjectEntry一括削除完了: ${deleteProjectEntriesResult.count}件`);
+      }
+
+      // Step3: Project一括削除
+      const deleteProjectsResult = await tx.project.deleteMany({
+        where: { datasetId: { in: targetDatasetIds } }
+      });
+      logLine(workflowId, `Project一括削除完了: ${deleteProjectsResult.count}件`);
+
+      // Step4: Entry一括削除
+      const deleteEntriesResult = await tx.entry.deleteMany({
+        where: { datasetId: { in: targetDatasetIds } }
+      });
+      logLine(workflowId, `Entry一括削除完了: ${deleteEntriesResult.count}件`);
+
+      // 4) 【新方式】全Entryデータを準備して一括挿入
+      logLine(workflowId, `一括挿入開始`);
+      const allEntriesData = [];
+      
       for (const g of groups.values()) {
         const { deptCode, subjectCode, rows } = g;
         const dsInfo = datasetMap.get(`${deptCode}|${subjectCode}`)!;
 
-        logLine(workflowId, `洗い替え処理開始: 部門=${deptCode}, 科目=${subjectCode}`);
-
-        // Step1: 既存データのカスケード削除（ProjectEntry → Entry → Project）
-        const existingEntries = await tx.entry.findMany({
-          where: { datasetId: dsInfo.id },
-          select: { id: true },
-        });
-        const existingEntryIds = existingEntries.map(e => e.id);
-
-        // ProjectEntry削除
-        if (existingEntryIds.length > 0) {
-          const deleteProjectEntriesResult = await tx.projectEntry.deleteMany({
-            where: { entryId: { in: existingEntryIds } }
-          });
-          logLine(workflowId, `ProjectEntry削除完了: ${deleteProjectEntriesResult.count}件`);
-        }
-
-        // Project削除
-        const deleteProjectsResult = await tx.project.deleteMany({
-          where: { datasetId: dsInfo.id }
-        });
-        logLine(workflowId, `Project削除完了: ${deleteProjectsResult.count}件`);
-
-        // Entry削除
-        const deleteEntriesResult = await tx.entry.deleteMany({
-          where: { datasetId: dsInfo.id }
-        });
-        logLine(workflowId, `Entry削除完了: ${deleteEntriesResult.count}件`);
-
-        // Step2: 新規データの作成
         if (rows.length > 0) {
           // 重複データの事前チェック
           const rowKeySet = new Set<string>();
@@ -260,22 +268,27 @@ export async function importBalanceDatasetAction(form: FormData) {
             importJobId: dsInfo.importJobId,
           }));
           
-          const CREATE_CHUNK = 1000;
-          for (let i = 0; i < data.length; i += CREATE_CHUNK) {
-            await tx.entry.createMany({ 
-              data: data.slice(i, i + CREATE_CHUNK), 
-              skipDuplicates: true // 重複データをスキップして処理継続
-            });
-          }
-          
-          logLine(workflowId, `Entry作成完了: ${rows.length}件`);
+          allEntriesData.push(...data);
         }
-
-        logLine(workflowId, `洗い替え処理完了: 部門=${deptCode}, 科目=${subjectCode}`);
         results.push({ datasetId: dsInfo.id, deptCode, subjectCode, count: rows.length });
       }
 
-      // 3) 全データセットのステータス更新
+      // 全Entryを一括挿入（チャンクサイズを調整）
+      const CREATE_CHUNK = 1000;
+      let totalInserted = 0;
+      for (let i = 0; i < allEntriesData.length; i += CREATE_CHUNK) {
+        const chunk = allEntriesData.slice(i, i + CREATE_CHUNK);
+        await tx.entry.createMany({ 
+          data: chunk, 
+          skipDuplicates: true // 重複データをスキップして処理継続
+        });
+        totalInserted += chunk.length;
+        logLine(workflowId, `Entry挿入進捗: ${totalInserted}/${allEntriesData.length}件`);
+      }
+      
+      logLine(workflowId, `Entry一括挿入完了: ${allEntriesData.length}件`);
+
+      // 5) 全データセットのステータス更新
       for (const result of results) {
         const currentCount = await tx.entry.count({ 
           where: { datasetId: result.datasetId, softDeletedAt: null } 
@@ -296,7 +309,7 @@ export async function importBalanceDatasetAction(form: FormData) {
       timeout: 600000  // 10分（洗い替え処理のため延長）
     });
     // 日本語化: 洗い替え処理完了
-    logLine(workflowId, `洗い替え処理完了: 対象部門×科目=${results.length}件 - 全データが新規作成されました`);
+    logLine(workflowId, `洗い替え処理完了: 対象部門×科目=${results.length}件 - 一括方式により大幅高速化`);
     return { ok: true as const, ym, datasets: results, totalGroups: results.length, workflowId };
   } catch (e: unknown) {
     console.error(e);
