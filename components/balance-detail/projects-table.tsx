@@ -225,8 +225,9 @@ export function ProjectsTable({
               const firstPartner = p.entries.find((e) => e.partnerName)?.partnerName?.trim() || "";
               const firstPartnerCode = p.entries.find((e) => e.partnerCode)?.partnerCode?.trim() || "";
               const projectNameRaw = p.name?.trim() || "";
-              const projectName = projectNameRaw && projectNameRaw !== firstPartner ? projectNameRaw : "案件名未設定";
-              const partnerDisplay = firstPartner || "取引先未設定";
+              const projectName = projectNameRaw || "案件名未設定";
+              // 永続化された取引先名を優先、なければ動的に取得
+              const partnerDisplay = p.partnerName?.trim() || firstPartner || "取引先未設定";
               const projectBalance = calcProjectTotal(p);
 
               return (

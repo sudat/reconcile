@@ -455,12 +455,19 @@ export async function ensureAutoGrouping(
   const sorted = Array.from(groups.entries())
     .map(([key, g]) => ({ key, ...g }))
     .sort((a, b) => Math.abs(b.total) - Math.abs(a.total));
-  const projectsData = sorted.map((g, idx) => ({
-    id: randomUUID(),
-    datasetId: ds.id,
-    name: g.name,
-    orderNo: idx,
-  }));
+  const projectsData = sorted.map((g, idx) => {
+    // keyから取引先コードを抽出 (format: "partnerCode|label")
+    const partnerCode = g.key.split('|')[0];
+    const partnerName = nameByPartner.get(partnerCode) || partnerCode;
+    
+    return {
+      id: randomUUID(),
+      datasetId: ds.id,
+      name: g.name,
+      partnerName: partnerName,
+      orderNo: idx,
+    };
+  });
   if (projectsData.length > 0) {
     await prisma.project.createMany({
       data: projectsData,

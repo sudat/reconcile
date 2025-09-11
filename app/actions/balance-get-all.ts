@@ -54,7 +54,7 @@ export async function getBalanceAllAction(form: FormData) {
   const projectsDb = await prisma.project.findMany({
     where: { datasetId: { in: datasetIds }, isDeleted: false },
     orderBy: [{ datasetId: "asc" }, { orderNo: "asc" }],
-    select: { id: true, datasetId: true, name: true, orderNo: true },
+    select: { id: true, datasetId: true, name: true, partnerName: true, orderNo: true },
   });
   const linksDb = await prisma.projectEntry.findMany({
     where: { projectId: { in: projectsDb.map(p => p.id) } },

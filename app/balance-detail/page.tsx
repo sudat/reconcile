@@ -31,6 +31,7 @@ type BalanceAllResult =
         id: string;
         datasetId: string;
         name: string;
+        partnerName: string | null;
         orderNo: number;
       }>;
       links: Array<{ projectId: string; entryId: string }>;
@@ -55,6 +56,7 @@ type BalanceAllResult =
 import { uploadAndGroupAllAction } from "@/app/actions/upload-and-group";
 import { getProgressAction } from "@/app/actions/progress";
 import { neonWarmupAction } from "@/app/actions/neon-warmup";
+import { saveProjectsAction } from "@/app/actions/project-save";
 // import { PROCESSING } from "@/constants/processing";
 
 const AUTO_SHOW_LATEST = false; // 初期表示: 最新自動 or 表示待ち（要件検討点）
@@ -91,6 +93,7 @@ export default function BalanceDetailPage() {
 
   // 画面内編集用に案件配列をstate管理（D&Dや編集、削除に対応）
   const [projects, setProjects] = useState<Project[]>([]);
+  const [originalProjects, setOriginalProjects] = useState<Project[]>([]);
 
   // Neonデータベースのウォームアップ（ページマウント時に実行）
   useEffect(() => {
@@ -143,10 +146,14 @@ export default function BalanceDetailPage() {
   }, []); // 空の依存配列でマウント時に一度だけ実行
 
   useEffect(() => {
-    if (!shownYm || !data || !hasMatch) return setProjects([]);
-    setProjects(
-      (data.projects ?? []).map((p) => ({ ...p, entries: [...p.entries] }))
-    );
+    if (!shownYm || !data || !hasMatch) {
+      setProjects([]);
+      setOriginalProjects([]);
+      return;
+    }
+    const projectsData = (data.projects ?? []).map((p) => ({ ...p, entries: [...p.entries] }));
+    setProjects(projectsData);
+    setOriginalProjects(JSON.parse(JSON.stringify(projectsData))); // Deep copy
     // 展開状態はリセットしない（ユーザ操作優先）
   }, [shownYm, data, hasMatch]);
 
@@ -269,6 +276,7 @@ export default function BalanceDetailPage() {
       const projs = projsRaw.map((p) => ({
         id: p.id,
         name: p.name,
+        partnerName: p.partnerName,
         total: 0,
         entries: [] as Entry[],
       }));
@@ -284,6 +292,7 @@ export default function BalanceDetailPage() {
         projs.push({
           id: "unclassified",
           name: "未分類",
+          partnerName: null,
           entries: unassigned,
           total: 0,
         });
@@ -310,15 +319,41 @@ export default function BalanceDetailPage() {
     setData(ds);
   }, [shownYm, dept.code, subject.code, allStore, buildDatasetFromAll]);
 
-  // 永続化（ダミー）
-  const handlePersist = () => {
-    console.info(
-      "[persist] ym=%s dept=%s subject=%s projects=%d",
-      shownYm,
-      dept.code,
-      subject.code,
-      projects.length
-    );
+  // 変更検知
+  const hasChanges = JSON.stringify(projects) !== JSON.stringify(originalProjects);
+
+  // 永続化
+  const handlePersist = async () => {
+    if (!shownYm || !hasMatch || projects.length === 0) return;
+    
+    try {
+      // デバッグ用：送信するプロジェクトデータをログ出力
+      console.log("[DEBUG] Sending projects data:", projects.map(p => ({
+        id: p.id,
+        name: p.name,
+        entryCount: p.entries.length,
+        entryIds: p.entries.map(e => e.id)
+      })));
+      
+      const fd = new FormData();
+      fd.set("ym", shownYm);
+      fd.set("deptCode", dept.code);
+      fd.set("subjectCode", subject.code);
+      fd.set("projects", JSON.stringify(projects));
+      
+      const result = await saveProjectsAction(fd);
+      
+      if (result.ok) {
+        // 成功時: 初期状態を更新
+        setOriginalProjects(JSON.parse(JSON.stringify(projects)));
+        toast.success(`保存完了: ${result.saved}案件、${result.linked}件の紐づけ`);
+      } else {
+        toast.error(`保存失敗: ${result.error}`);
+      }
+    } catch (error) {
+      console.error("Save error:", error);
+      toast.error("保存処理でエラーが発生しました");
+    }
   };
 
   return (
@@ -511,7 +546,7 @@ export default function BalanceDetailPage() {
             type="button"
             onClick={handlePersist}
             variant="default"
-            disabled={!shownYm || !hasMatch || projects.length === 0}
+            disabled={!shownYm || !hasMatch || projects.length === 0 || !hasChanges}
             aria-label="案件・仕訳の入替内容を保存"
             className="shadow-xs hover:bg-primary/90 px-3 py-1.5 h-8 rounded-full"
           >

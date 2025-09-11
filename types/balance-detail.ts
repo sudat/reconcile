@@ -14,6 +14,7 @@ export type Entry = {
 export type Project = {
   id: string;
   name: string;
+  partnerName?: string | null;
   total: number;
   entries: Entry[];
 };

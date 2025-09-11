@@ -74,15 +74,16 @@ model Entry {
 }
 
 model Project {
-  id         String   @id @default(uuid())
-  datasetId  String
-  dataset    Dataset  @relation(fields: [datasetId], references: [id])
-  name       String
-  orderNo    Int      @default(0)
-  isDeleted  Boolean  @default(false)
-  entries    ProjectEntry[]
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id          String   @id @default(uuid())
+  datasetId   String
+  dataset     Dataset  @relation(fields: [datasetId], references: [id])
+  name        String
+  partnerName String?  // AI分類時の代表取引先名を永続化
+  orderNo     Int      @default(0)
+  isDeleted   Boolean  @default(false)
+  entries     ProjectEntry[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   @@index([datasetId, isDeleted, orderNo])
   @@schema("reconcile")
