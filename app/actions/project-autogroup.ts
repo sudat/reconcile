@@ -97,7 +97,6 @@ export async function ensureAutoGrouping(
   const deptCode = String(form.get("deptCode") || "");
   const subjectCode = String(form.get("subjectCode") || "");
   const workflowId = String(form.get("workflowId") || "");
-  const force = String(form.get("force") || "false").toLowerCase() === "true";
   if (!ym || !deptCode || !subjectCode)
     return { ok: false, error: "パラメータが不足しています" };
 

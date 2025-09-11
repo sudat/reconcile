@@ -170,7 +170,6 @@ export async function importBalanceDatasetAction(form: FormData) {
     const results: { datasetId: string; deptCode: string; subjectCode: string; count: number }[] = [];
     const fileName = String(form.get("fileName") || "uploaded.xlsx");
     const fileSize = Number(form.get("fileSize") || fileBuf.length);
-    const now = new Date();
 
     // 日本語化: 洗い替え処理開始
     logLine(workflowId, `洗い替え処理開始: 対象部門×科目=${groups.size}件 - 既存データを完全削除して新規作成します`);

@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useMemo, useRef, useState } from "react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { formatDateJP, formatJPY } from "@/lib/format";
@@ -51,10 +51,10 @@ export function ProjectsTable({
   const [editing, setEditing] = useState<{ id: string; name: string } | null>(null);
   const [sortConfig, setSortConfig] = useState<SortConfig>(null);
 
-  const calcProjectTotal = (p: Project) => p.entries.reduce((s, e) => s + (e.debit - e.credit), 0);
+  const calcProjectTotal = useCallback((p: Project) => p.entries.reduce((s, e) => s + (e.debit - e.credit), 0), []);
   const monthTotal = useMemo(
     () => projects.reduce((s, p) => s + calcProjectTotal(p), 0),
-    [projects]
+    [projects, calcProjectTotal]
   );
 
   const handleSort = (column: NonNullable<SortConfig>['column']) => {
