@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "postinstall": "prisma generate",
     "extract:balance": "bun scripts/extract-balance-detail.ts --file=docs/balance-detail/SS総勘定元帳_テストデータ.xlsx --dept=2100000000 --subject=21701 --out=app/balance-detail/sample-data.json",
     "prisma:generate": "bunx prisma generate",
     "prisma:migrate": "bunx prisma migrate dev --name init_reconcile_schema",
