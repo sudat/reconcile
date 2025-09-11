@@ -12,21 +12,19 @@ import { ExpandAllToggle } from "@/components/balance-detail/expand-all-toggle";
 import type { Dataset, Entry, Project } from "@/types/balance-detail";
 import { Button } from "@/components/ui/button";
 import { ProjectsTable } from "@/components/balance-detail/projects-table";
-// import { importBalanceDatasetAction } from "@/app/actions/balance-upload"; // moved into uploadAndGroupAllAction
 import { toast } from "sonner";
-// import { getBalanceDetailAction } from "@/app/actions/balance-get";
-// まとめ取得に切替
 import { getBalanceAllAction } from "@/app/actions/balance-get-all";
-import type { BalanceAllOk, BalanceAllErr } from "@/app/actions/balance-get-all";
+import type {
+  BalanceAllOk,
+  BalanceAllErr,
+} from "@/app/actions/balance-get-all";
 
 type BalanceAllResult = BalanceAllOk | BalanceAllErr;
-// import { ensureAutoGrouping } from "@/app/actions/project-autogroup"; // orchestrated on server
 import { uploadAndGroupAllAction } from "@/app/actions/upload-and-group";
 import { getProgressAction } from "@/app/actions/progress";
 import { saveProjectsAction } from "@/app/actions/project-save";
-// import { PROCESSING } from "@/constants/processing";
 
-const AUTO_SHOW_LATEST = false; // 初期表示: 最新自動 or 表示待ち（要件検討点）
+const AUTO_SHOW_LATEST = true;
 
 function currentYm(): string {
   const d = new Date();
@@ -62,15 +60,16 @@ export default function BalanceDetailPage() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [originalProjects, setOriginalProjects] = useState<Project[]>([]);
 
-  // Neon Warmupは不要になったため削除（2025-09-11）
-
   useEffect(() => {
     if (!shownYm || !data || !hasMatch) {
       setProjects([]);
       setOriginalProjects([]);
       return;
     }
-    const projectsData = (data.projects ?? []).map((p) => ({ ...p, entries: [...p.entries] }));
+    const projectsData = (data.projects ?? []).map((p) => ({
+      ...p,
+      entries: [...p.entries],
+    }));
     setProjects(projectsData);
     setOriginalProjects(JSON.parse(JSON.stringify(projectsData))); // Deep copy
     // 展開状態はリセットしない（ユーザ操作優先）
@@ -250,33 +249,39 @@ export default function BalanceDetailPage() {
   }, [shownYm, dept.code, subject.code, allStore, buildDatasetFromAll]);
 
   // 変更検知
-  const hasChanges = JSON.stringify(projects) !== JSON.stringify(originalProjects);
+  const hasChanges =
+    JSON.stringify(projects) !== JSON.stringify(originalProjects);
 
   // 永続化
   const handlePersist = async () => {
     if (!shownYm || !hasMatch || projects.length === 0) return;
-    
+
     try {
       // デバッグ用：送信するプロジェクトデータをログ出力
-      console.log("[DEBUG] Sending projects data:", projects.map(p => ({
-        id: p.id,
-        name: p.name,
-        entryCount: p.entries.length,
-        entryIds: p.entries.map(e => e.id)
-      })));
-      
+      console.log(
+        "[DEBUG] Sending projects data:",
+        projects.map((p) => ({
+          id: p.id,
+          name: p.name,
+          entryCount: p.entries.length,
+          entryIds: p.entries.map((e) => e.id),
+        }))
+      );
+
       const fd = new FormData();
       fd.set("ym", shownYm);
       fd.set("deptCode", dept.code);
       fd.set("subjectCode", subject.code);
       fd.set("projects", JSON.stringify(projects));
-      
+
       const result = await saveProjectsAction(fd);
-      
+
       if (result.ok) {
         // 成功時: 初期状態を更新
         setOriginalProjects(JSON.parse(JSON.stringify(projects)));
-        toast.success(`保存完了: ${result.saved}案件、${result.linked}件の紐づけ`);
+        toast.success(
+          `保存完了: ${result.saved}案件、${result.linked}件の紐づけ`
+        );
       } else {
         toast.error(`保存失敗: ${result.error}`);
       }
@@ -373,15 +378,9 @@ export default function BalanceDetailPage() {
                     console.log(
                       `[Progress] done=${done}, total=${total}, percent=${percent}`
                     );
-
                     // ステータス表示の更新ロジック
-                    if (total > 0 && percent < 100) {
-                      // AI分類処理中（3段階目）
-                      if (currentStep !== 3) {
-                        setStatusText("[3. AI分類処理中...]");
-                        currentStep = 3;
-                      }
-                    } else if (percent >= 100 && currentStep !== 4) {
+                    // ステップ3への遷移はポーリングに依存しない（即時遷移に変更）
+                    if (percent >= 100 && currentStep < 4) {
                       // データ読込中（4段階目）
                       setStatusText("[4. データ読込中...]");
                       currentStep = 4;
@@ -397,6 +396,11 @@ export default function BalanceDetailPage() {
 
             // Server Action開始直後にポーリング開始（初期状態をキャッチ）
             startPolling();
+            // 仕訳データ保存の開始後は即ステップ3に遷移（ポーリングに依存しない）
+            if (currentStep < 3) {
+              setStatusText("[3. AI分類処理中...]");
+              currentStep = 3;
+            }
             const res = await uploadAndGroupAllAction(fd);
             if (!res || res.ok === false) {
               console.error(res?.error || "アップロード処理に失敗しました");
@@ -476,7 +480,9 @@ export default function BalanceDetailPage() {
             type="button"
             onClick={handlePersist}
             variant="default"
-            disabled={!shownYm || !hasMatch || projects.length === 0 || !hasChanges}
+            disabled={
+              !shownYm || !hasMatch || projects.length === 0 || !hasChanges
+            }
             aria-label="案件・仕訳の入替内容を保存"
             className="shadow-xs hover:bg-primary/90 px-3 py-1.5 h-8 rounded-full"
           >
