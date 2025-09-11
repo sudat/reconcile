@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { waitNeonReady } from "@/lib/neon";
 import { createHash, randomUUID } from "crypto";
 import { logWorkflow } from "@/lib/logger";
+import { setProgress } from "@/lib/progress";
 
 function toDateStr(v: unknown): string {
   if (v instanceof Date && !isNaN(v.getTime())) {
@@ -287,6 +288,10 @@ export async function importBalanceDatasetAction(form: FormData) {
       }
       
       logLine(workflowId, `Entry一括挿入完了: ${allEntriesData.length}件`);
+      // フロントのステータスをAI分類ステップへ遷移させるトリガー
+      // ここで進捗の total>0 をセットしておくと、ポーリング側が
+      // "[3. AI分類処理中...]" に切り替わる（後続で正しいtotalに上書きされる）
+      try { setProgress(workflowId, 0, 1); } catch {}
 
       // 5) 全データセットのステータス更新
       for (const result of results) {

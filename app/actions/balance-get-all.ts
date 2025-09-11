@@ -29,17 +29,31 @@ export async function getBalanceAllAction(form: FormData) {
     const hasProj = new Set(grouped.filter(g => (g._count?._all ?? 0) > 0).map(g => g.datasetId));
     const need = datasets.filter(d => !hasProj.has(d.id));
     if (need.length > 0) {
-      const limit = Math.min(PROCESSING.maxParallelScopes, 20);
+      // 部門別にグループ化して並列処理
+      const departmentGroups = new Map<string, typeof need>();
+      for (const dataset of need) {
+        const deptScopes = departmentGroups.get(dataset.deptCode) ?? [];
+        deptScopes.push(dataset);
+        departmentGroups.set(dataset.deptCode, deptScopes);
+      }
+      
+      const departments = Array.from(departmentGroups.keys());
+      const limit = Math.min(PROCESSING.maxParallelDepartments, 20);
+      
       await (async function runLimited() {
-        const workers = new Array(Math.min(limit, need.length)).fill(0).map(async (_v, widx) => {
-          for (let idx = widx; idx < need.length; idx += limit) {
-            const d = need[idx];
-            const f = new FormData();
-            f.set("ym", ym);
-            f.set("deptCode", d.deptCode);
-            f.set("subjectCode", d.subjectCode);
-            f.set("force", "false");
-            try { await ensureAutoGrouping(f); } catch {}
+        const workers = new Array(Math.min(limit, departments.length)).fill(0).map(async (_v, widx) => {
+          for (let idx = widx; idx < departments.length; idx += limit) {
+            const deptCode = departments[idx];
+            const deptScopes = departmentGroups.get(deptCode)!;
+            
+            // 部門内の全科目を順次処理
+            for (const d of deptScopes) {
+              const f = new FormData();
+              f.set("ym", ym);
+              f.set("deptCode", d.deptCode);
+              f.set("subjectCode", d.subjectCode);
+              await ensureAutoGrouping(f);
+            }
           }
         });
         await Promise.all(workers);
@@ -76,7 +90,7 @@ export async function getBalanceAllAction(form: FormData) {
     entries: entriesDb.map(e => ({
       id: e.id,
       datasetId: e.datasetId,
-      date: e.date.toISOString().slice(0, 10),
+      date: e.date,
       voucherNo: e.voucherNo,
       partnerCode: e.partnerCode,
       partnerName: e.partnerName,

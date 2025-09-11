@@ -16,13 +16,24 @@ export async function uploadAndGroupAllAction(form: FormData) {
   const title = formatUploadTraceTitle(new Date());
 
   return withWorkflowTrace({ workflowId, name: title, metadata: { ym, fileName } }, async () => {
-    // 1) DBへ永続化
+    // 1) DB永続化
     const persisted = await importBalanceDatasetAction(form);
     if (!persisted || persisted.ok === false) return persisted;
 
     const datasets = (persisted.datasets ?? []) as DatasetScope[];
-    const total = datasets.length;
-    let done = 0;
+    
+    // 2) 部門別にグループ化
+    const departmentGroups = new Map<string, DatasetScope[]>();
+    for (const dataset of datasets) {
+      const deptScopes = departmentGroups.get(dataset.deptCode) ?? [];
+      deptScopes.push(dataset);
+      departmentGroups.set(dataset.deptCode, deptScopes);
+    }
+    
+    const departments = Array.from(departmentGroups.keys());
+    const totalDepartments = departments.length;
+    const totalScopes = datasets.length;
+    let doneDepartments = 0;
 
     async function runLimited<T>(items: T[], limit: number, task: (item: T, idx: number) => Promise<void>) {
       const workers = new Array(Math.min(limit, items.length)).fill(0).map(async (_v, widx) => {
@@ -33,32 +44,36 @@ export async function uploadAndGroupAllAction(form: FormData) {
       await Promise.all(workers);
     }
 
-    // 進捗初期化（ブラウザ側でポーリング表示するため）
-    setProgress(workflowId, 0, total);
+    // 進捗初期化（部門ベース）
+    setProgress(workflowId, 0, totalDepartments);
 
-    // 2) 各スコープのAI分類
-    await runLimited(datasets, PROCESSING.maxParallelScopes, async (d, idx) => {
-      await withSpan({ name: `scope ${d.deptCode}-${d.subjectCode}`, metadata: { idx: idx + 1, total, ym } }, async () => {
+    // 3) 各部門のAI分類（部門内の全科目をまとめて1回のOpenAI呼び出し）
+    await runLimited(departments, PROCESSING.maxParallelDepartments, async (deptCode, idx) => {
+      await withSpan({ name: `dept ${deptCode}`, metadata: { idx: idx + 1, total: totalDepartments, ym } }, async () => {
+        const deptScopes = departmentGroups.get(deptCode)!;
+        
+        // 部門内の全科目をまとめて処理（統合AI呼び出し）
         const f = new FormData();
         f.set("ym", ym);
-        f.set("deptCode", d.deptCode);
-        f.set("subjectCode", d.subjectCode);
+        f.set("deptCode", deptCode);
         f.set("workflowId", workflowId);
+        f.set("subjectCodes", JSON.stringify(deptScopes.map(s => s.subjectCode)));
         await ensureAutoGrouping(f);
-        done += 1;
+        
+        doneDepartments += 1;
         // 進捗更新（%表示）
-        setProgress(workflowId, done, total);
-        const percent = total > 0 ? Math.round((done / total) * 100) : 0;
+        setProgress(workflowId, doneDepartments, totalDepartments);
+        const percent = totalDepartments > 0 ? Math.round((doneDepartments / totalDepartments) * 100) : 0;
         logWorkflow(
           workflowId,
-          `自動グループ化 進捗: ${done}/${total} (${percent}%) 部門=${d.deptCode}, 科目=${d.subjectCode}`
+          `部門処理完了: ${doneDepartments}/${totalDepartments} (${percent}%) 部門=${deptCode}, 科目数=${deptScopes.length}`
         );
       });
     });
 
     // 進捗完了
-    setProgress(workflowId, total, total);
-    logWorkflow(workflowId, `自動グループ化 全完了: 対象部門×科目=${total}件`);
+    setProgress(workflowId, totalDepartments, totalDepartments);
+    logWorkflow(workflowId, `自動グループ化 全完了: 対象部門=${totalDepartments}件, 対象部門×科目=${totalScopes}件`);
     return { ...persisted, ok: true as const, workflowId };
   });
 }

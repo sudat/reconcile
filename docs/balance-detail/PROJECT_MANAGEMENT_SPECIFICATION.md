@@ -232,6 +232,8 @@ for (let i = 0; i < entriesData.length; i += LINK_CHUNK) {
 
 ## 8. デバッグ・ログ
 
+> 2025-09-11 追記: マッチング詳細ログはデフォルトで非出力です。必要時のみ `AUTOGROUP_VERBOSE_LOG=true` を設定してください。
+
 ### AI分類ログ
 ```typescript
 logWorkflow(workflowId, 
@@ -253,6 +255,8 @@ logWorkflow(workflowId,
   `取引先${partnerCode}: マッチ${matchedCount}件, 未マッチ${unmatchedCount}件`
 );
 ```
+
+上記「部分一致」「取引先…のマッピング数」「科目…: マッチ/未マッチ」「科目…処理完了」「部門…の全科目処理完了」は `AUTOGROUP_VERBOSE_LOG=true` のときのみ出力されます。
 
 ## 9. 今後の改善点
 

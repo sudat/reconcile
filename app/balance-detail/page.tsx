@@ -55,7 +55,6 @@ type BalanceAllResult =
 // import { ensureAutoGrouping } from "@/app/actions/project-autogroup"; // orchestrated on server
 import { uploadAndGroupAllAction } from "@/app/actions/upload-and-group";
 import { getProgressAction } from "@/app/actions/progress";
-import { neonWarmupAction } from "@/app/actions/neon-warmup";
 import { saveProjectsAction } from "@/app/actions/project-save";
 // import { PROCESSING } from "@/constants/processing";
 
@@ -95,55 +94,7 @@ export default function BalanceDetailPage() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [originalProjects, setOriginalProjects] = useState<Project[]>([]);
 
-  // Neonデータベースのウォームアップ（ページマウント時に実行）
-  useEffect(() => {
-    console.log("[Neon Warmup] useEffect triggered - starting warmup process");
-
-    const warmupNeon = async () => {
-      try {
-        console.log("[Neon Warmup] Starting database warmup...");
-        console.log("[Neon Warmup] Calling neonWarmupAction...");
-
-        const result = await neonWarmupAction();
-        console.log(
-          "[Neon Warmup] Received result from neonWarmupAction:",
-          result
-        );
-
-        if (result.ok) {
-          console.log("[Neon Warmup] Database warmup completed successfully");
-        } else {
-          console.warn("[Neon Warmup] Database warmup failed:", result.error);
-        }
-      } catch (error) {
-        console.error("[Neon Warmup] Unexpected error during warmup:", error);
-        console.error("[Neon Warmup] Error details:", {
-          message: error instanceof Error ? error.message : String(error),
-          stack: error instanceof Error ? error.stack : undefined,
-          name: error instanceof Error ? error.name : undefined,
-        });
-
-        // ネットワークエラーの場合の追加情報
-        if (
-          error instanceof TypeError &&
-          error.message.includes("Failed to fetch")
-        ) {
-          console.error(
-            "[Neon Warmup] Network error detected. This may indicate:"
-          );
-          console.error(
-            "  - DATABASE_URL environment variable is not configured"
-          );
-          console.error("  - Database server is not accessible");
-          console.error("  - Server Action configuration issue");
-        }
-      }
-    };
-
-    // バックグラウンドでウォームアップ実行（UIをブロックしない）
-    console.log("[Neon Warmup] Initiating background warmup...");
-    warmupNeon();
-  }, []); // 空の依存配列でマウント時に一度だけ実行
+  // Neon Warmupは不要になったため削除（2025-09-11）
 
   useEffect(() => {
     if (!shownYm || !data || !hasMatch) {
