@@ -107,6 +107,13 @@ type AutoGroupResult = {
   projects: { id: string; name: string; total: number }[];
 };
 
+// 部門処理単位の集計結果型
+type DepartmentResult = {
+  datasetId: string;
+  created: number;
+  projects: AutoGroupResult["projects"];
+};
+
 /**
  * 取引先×摘要で案件を自動生成（初回のみ）。
  * - 既にプロジェクトが存在する場合は何もしない（force指定時を除く）。
@@ -369,7 +376,7 @@ export async function ensureAutoGrouping(
           }
 
           // 部門レベルでの結果を科目別に処理
-          const departmentResults: { datasetId: string; created: number; projects: any[] }[] = [];
+          const departmentResults: DepartmentResult[] = [];
           
           for (const subjectResult of parsed.subjectResults) {
             if (!subjectResult.subjectCode || typeof subjectResult.subjectCode !== "string") {
@@ -576,7 +583,7 @@ export async function ensureAutoGrouping(
           );
           
           // フォールバック処理（科目別に基本的なグループ化）
-          const fallbackResults: { datasetId: string; created: number; projects: any[] }[] = [];
+          const fallbackResults: DepartmentResult[] = [];
           
           for (const [subjectCode, entries] of entriesBySubject.entries()) {
             const dataset = datasets.find(ds => ds.subjectCode === subjectCode);
@@ -666,8 +673,8 @@ export async function ensureAutoGrouping(
     );
 
   // OpenAI API処理が完了した場合の結果
-  const totalCreated = departmentResults.reduce((sum: number, r: any) => sum + r.created, 0);
-  const allProjects = departmentResults.flatMap((r: any) => r.projects);
+  const totalCreated = departmentResults.reduce((sum: number, r: DepartmentResult) => sum + r.created, 0);
+  const allProjects = departmentResults.flatMap((r: DepartmentResult) => r.projects);
 
   return {
     ok: true,
@@ -680,7 +687,7 @@ export async function ensureAutoGrouping(
     // APIキー未設定の場合のフォールバック処理
     logWorkflow(workflowId, `APIキー未設定のため基本的なグループ化を実行: 部門=${deptCode}`);
     
-    const fallbackResults: { datasetId: string; created: number; projects: any[] }[] = [];
+    const fallbackResults: DepartmentResult[] = [];
     
     for (const [subjectCode, entries] of entriesBySubject.entries()) {
       const dataset = datasets.find(ds => ds.subjectCode === subjectCode);
